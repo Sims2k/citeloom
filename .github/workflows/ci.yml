@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup UV
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set Python version
+        run: |
+          echo "3.12.8" > .python-version
+
+      - name: Sync environment
+        run: uv sync
+
+      - name: Grep guard for forbidden pip install
+        run: |
+          if git ls-files -z | xargs -0 grep -nE "(^|[^a-zA-Z])pip install([^a-zA-Z]|$)" -H --line-number --color=never; then
+            echo "Forbidden 'pip install' detected in repo. Use uv only." >&2
+            exit 1
+          fi
+
+      - name: Ruff format check
+        run: uvx ruff format --check .
+
+      - name: Ruff lint
+        run: uvx ruff check .
+
+      - name: Mypy (strict for src/domain)
+        run: |
+          uv run mypy --config-file pyproject.toml src
+
+      - name: Architecture contracts (import-linter)
+        run: |
+          uvx lint-imports --config linter.ini
+
+      - name: Pytest with coverage
+        run: uv run pytest --maxfail=1 --disable-warnings -q --cov=src --cov-report=term-missing
+
+      - name: Enforce domain coverage gate 90%
+        run: |
+          coverage xml -o coverage.xml
+          python - << 'PY'
+import sys, xml.etree.ElementTree as ET
+root = ET.parse('coverage.xml').getroot()
+packages = root.findall('.//packages/package')
+domain = None
+for p in packages:
+    if p.get('name','').startswith('src.domain') or p.get('name','') == 'src.domain':
+        domain = p
+        break
+if domain is None:
+    cov = root.find('.//coverage')
+    line_rate = float(cov.get('line-rate', '0')) if cov is not None else 0.0
+else:
+    line_rate = float(domain.get('line-rate','0'))
+pct = line_rate * 100
+print(f"Domain coverage: {pct:.2f}%")
+if pct < 90:
+    print("Coverage gate failed: domain < 90%", file=sys.stderr)
+    sys.exit(1)
+PY

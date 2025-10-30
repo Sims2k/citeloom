@@ -1,0 +1,14 @@
+# Sample configuration for CiteLoom
+[project]
+id = "citeloom/clean-arch"
+collection = "proj-citeloom-clean-arch"
+embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
+hybrid_enabled = true
+
+[paths]
+references = "references/clean-arch.json"
+raw_assets = "assets/raw/"
+audit_dir = "var/audit/"
+
+[qdrant]
+url = "http://localhost:6333"
