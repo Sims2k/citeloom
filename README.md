@@ -1,9 +1,17 @@
-# citeloom
+# CiteLoom
 Weave long-form sources into small, citable context for your AI work.
 
 ## Intro
 
 Short description and goals for CiteLoom will go here.
+
+- Sources: ingest long-form PDFs and documents
+- Chunking: heading-aware hybrid chunks for retrieval
+- Citations: enrich chunks with Zotero CSL-JSON metadata
+- Projects: per-project collections and isolation in Qdrant
+- Tools: CLI-first; MCP integrations for editors/agents
+- Architecture: Clean Architecture (domain/application/infrastructure)
+- Flow: convert → chunk → enrich → embed → index → query
 
 ## Developer Quickstart
 

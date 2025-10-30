@@ -66,10 +66,10 @@ description: "Task list template for feature implementation"
 
 ### Implementation for User Story 1
 
-- [ ] T026 [P] [US1] Update README title and tagline in `README.md`
-- [ ] T027 [US1] Add positioning bullets to `README.md` below tagline (sources, chunking, citations, projects, tools, architecture, flow)
-- [ ] T028 [P] [US1] Mirror tagline in constitution header block in `.specify/memory/constitution.md` (if header present)
-- [ ] T029 [US1] Verify consistency across README and constitution (exact tagline match)
+- [x] T026 [P] [US1] Update README title and tagline in `README.md`
+- [x] T027 [US1] Add positioning bullets to `README.md` below tagline (sources, chunking, citations, projects, tools, architecture, flow)
+- [x] T028 [P] [US1] Mirror tagline in constitution header block in `.specify/memory/constitution.md` (if header present)
+- [x] T029 [US1] Verify consistency across README and constitution (exact tagline match)
 
 **Checkpoint**: US1 independently testable and complete
 

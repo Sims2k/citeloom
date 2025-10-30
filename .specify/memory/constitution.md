@@ -1,4 +1,6 @@
-# citeloom Constitution
+# CiteLoom Constitution
+Weave long-form sources into small, citable context for your AI work.
+
 <!--
 Sync Impact Report
 - Version change: 1.2.0 → 1.3.0
