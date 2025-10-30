@@ -40,3 +40,5 @@ Command reference and examples will go here.
 ## Config
 
 Document `citeloom.toml` fields and examples here.
+
+See also: [Naming alternatives](docs/branding/naming-alternatives.md)

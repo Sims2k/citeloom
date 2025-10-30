@@ -61,6 +61,17 @@ As a maintainer, I want alternate name options recorded so that future branding 
 
 1. **Given** this spec, **When** reviewing the alternatives, **Then** options like ContextLoom, CiteWeave, VaultWeave, Ports and Pages, CiteVector, SourceLoom, ScholarChunk, IndexLoom are present.
 
+#### Naming alternatives (for future consideration)
+
+- ContextLoom (`context-loom`)
+- CiteWeave (`cite-weave`)
+- VaultWeave (`vault-weave`)
+- Ports and Pages (`ports-and-pages`)
+- CiteVector (`citevector`)
+- SourceLoom (`source-loom`)
+- ScholarChunk (`scholar-chunk`)
+- IndexLoom (`index-loom`)
+
 ---
 
 [Add more user stories as needed, each with an assigned priority]

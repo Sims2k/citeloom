@@ -97,9 +97,9 @@ description: "Task list template for feature implementation"
 
 ### Implementation for User Story 3
 
-- [ ] T033 [P] [US3] Add "Naming alternatives" subsection to `specs/001-project-spec/spec.md` (Appendix already present) and ensure completeness
-- [ ] T034 [US3] Create `docs/branding/naming-alternatives.md` with list and slugs
-- [ ] T035 [P] [US3] Link alternatives from `README.md` (optional, single link)
+- [x] T033 [P] [US3] Add "Naming alternatives" subsection to `specs/001-project-spec/spec.md` (Appendix already present) and ensure completeness
+- [x] T034 [US3] Create `docs/branding/naming-alternatives.md` with list and slugs
+- [x] T035 [P] [US3] Link alternatives from `README.md` (optional, single link)
 
 **Checkpoint**: US3 independently testable and complete
 
