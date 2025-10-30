@@ -132,6 +132,19 @@ description: "Task list template for feature implementation"
 - [ ] T049 [P] Add integration smoke tests: `tests/integration/test_qdrant_smoke.py`, `tests/integration/test_docling_smoke.py`
 - [ ] T050 [P] Add unit tests for policies and DTOs to reach domain ≥90% coverage
 - [ ] T051 Document minimal `citeloom.toml` and sample commands in `README.md`
+ - [x] T039 Implement `DoclingConverterAdapter` in `src/infrastructure/adapters/docling_converter.py` (parse PDF → structure/text)
+ - [x] T040 Implement `DoclingHybridChunkerAdapter` in `src/infrastructure/adapters/docling_chunker.py` (heading-aware chunks)
+ - [x] T041 Implement `ZoteroCslJsonResolver` in `src/infrastructure/adapters/zotero_metadata.py` (read CSL-JSON → CitationMeta)
+ - [x] T042 Implement `FastEmbedAdapter` in `src/infrastructure/adapters/fastembed_embeddings.py` (batch embed)
+ - [x] T043 Implement `QdrantIndexAdapter` in `src/infrastructure/adapters/qdrant_index.py` (upsert/search with project filter)
+ - [x] T044 Wire `ingest_document` use case in `src/application/use_cases/ingest_document.py` (converter→chunker→resolver→embed→index)
+ - [x] T045 Wire `query_chunks` use case in `src/application/use_cases/query_chunks.py` (hybrid flag respected; top_k applied)
+ - [x] T046 Implement CLI `ingest` in `src/infrastructure/cli/commands/ingest.py` (read config; log audit file)
+ - [x] T047 Implement CLI `query` in `src/infrastructure/cli/commands/query.py` (print citekey, section, page span)
+ - [x] T048 Implement CLI `validate` in `src/infrastructure/cli/commands/validate.py` (embedding model/tokenizer alignment; qdrant connectivity)
+ - [x] T049 [P] Add integration smoke tests: `tests/integration/test_qdrant_smoke.py`, `tests/integration/test_docling_smoke.py`
+ - [ ] T050 [P] Add unit tests for policies and DTOs to reach domain ≥90% coverage
+ - [ ] T051 Document minimal `citeloom.toml` and sample commands in `README.md`
 
 - [ ] T054 Add hybrid retrieval config flag and path in `query_chunks` (ingest-time vs query-time sparse note)
 - [ ] T055 Add integration test for hybrid flag in `tests/integration/test_query_hybrid.py` (verify both modes execute)
