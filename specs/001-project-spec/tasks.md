@@ -109,9 +109,9 @@ description: "Task list template for feature implementation"
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T036 [P] Add badges to `README.md` (Python 3.12, uv, Ruff, CI)
-- [ ] T037 Ensure Quickstart in `specs/001-project-spec/quickstart.md` aligns with README
-- [ ] T038 Run formatting and type checks; fix any issues reported by ruff/mypy
+- [x] T036 [P] Add badges to `README.md` (Python 3.12, uv, Ruff, CI)
+- [x] T037 Ensure Quickstart in `specs/001-project-spec/quickstart.md` aligns with README
+- [x] T038 Run formatting and type checks; fix any issues reported by ruff/mypy
 
 ---
 

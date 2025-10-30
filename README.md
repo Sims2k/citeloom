@@ -1,4 +1,8 @@
 # CiteLoom
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-blue)](https://www.python.org/)
+[![uv](https://img.shields.io/badge/uv-managed-brightgreen)](https://docs.astral.sh/uv/)
+[![Ruff](https://img.shields.io/badge/lint-Ruff-informational)](https://docs.astral.sh/ruff/)
+[![CI](https://github.com/your-org/citeloom/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
 Weave long-form sources into small, citable context for your AI work.
 
 ## Intro

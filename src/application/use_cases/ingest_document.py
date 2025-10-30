@@ -22,7 +22,7 @@ def ingest_document(
     chunks: Sequence[Mapping[str, Any]] = chunker.chunk(conversion)
 
     texts: list[str] = []
-    enriched: list[Mapping[str, Any]] = []
+    enriched: list[dict[str, Any]] = []
     for ch in chunks:
         meta = resolver.resolve(citekey=ch.get("citekey"), references_path=request.references_path)
         item = {**ch, "citation": meta}
@@ -30,9 +30,9 @@ def ingest_document(
         texts.append(ch.get("text", ""))
 
     vectors = embedder.embed(texts, model_id=request.embedding_model)
-    to_store = []
-    for item, vec in zip(enriched, vectors):
-        to_store.append({**item, "embedding": vec, "embed_model": request.embedding_model})
+    to_store: list[dict[str, Any]] = []
+    for enriched_item, vec in zip(enriched, vectors):
+        to_store.append({**enriched_item, "embedding": vec, "embed_model": request.embedding_model})
 
     index.upsert(to_store, project_id=request.project_id, model_id=request.embedding_model)
     return IngestResult(chunks_written=len(to_store))
