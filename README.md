@@ -3,15 +3,16 @@ Weave long-form sources into small, citable context for your AI work.
 
 ## Intro
 
-Short description and goals for CiteLoom will go here.
+Turn big, hard-to-skim documents into small, trustworthy snippets you can search, quote,
+and reuse in your work. CiteLoom keeps the link to the original source so every answer
+is easy to verify and simple to cite.
 
-- Sources: ingest long-form PDFs and documents
-- Chunking: heading-aware hybrid chunks for retrieval
-- Citations: enrich chunks with Zotero CSL-JSON metadata
-- Projects: per-project collections and isolation in Qdrant
-- Tools: CLI-first; MCP integrations for editors/agents
-- Architecture: Clean Architecture (domain/application/infrastructure)
-- Flow: convert → chunk → enrich → embed → index → query
+- Bring your PDFs and notes; we prepare them for search
+- Split into clear, readable snippets with helpful context
+- Attach citation details so you can reference with confidence
+- Keep projects separate to avoid mixing unrelated material
+- Use from the command line and your favorite AI tools
+- Search and get concise answers with links back to the source
 
 ## Developer Quickstart
 

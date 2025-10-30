@@ -82,9 +82,9 @@ description: "Task list template for feature implementation"
 
 ### Implementation for User Story 2
 
-- [ ] T030 [P] [US2] Insert high-level description paragraph in `README.md`
-- [ ] T031 [P] [US2] Add 4–8 bullet overview to `README.md` (from spec Appendix)
-- [ ] T032 [US2] Validate language is non-technical and ≤120 chars for tagline context where applicable
+- [x] T030 [P] [US2] Insert high-level description paragraph in `README.md`
+- [x] T031 [P] [US2] Add 4–8 bullet overview to `README.md` (from spec Appendix)
+- [x] T032 [US2] Validate language is non-technical and ≤120 chars for tagline context where applicable
 
 **Checkpoint**: US2 independently testable and complete
 
