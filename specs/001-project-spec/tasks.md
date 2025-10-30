@@ -143,8 +143,8 @@ description: "Task list template for feature implementation"
  - [x] T047 Implement CLI `query` in `src/infrastructure/cli/commands/query.py` (print citekey, section, page span)
  - [x] T048 Implement CLI `validate` in `src/infrastructure/cli/commands/validate.py` (embedding model/tokenizer alignment; qdrant connectivity)
  - [x] T049 [P] Add integration smoke tests: `tests/integration/test_qdrant_smoke.py`, `tests/integration/test_docling_smoke.py`
- - [ ] T050 [P] Add unit tests for policies and DTOs to reach domain ≥90% coverage
- - [ ] T051 Document minimal `citeloom.toml` and sample commands in `README.md`
+ - [x] T050 [P] Add unit tests for policies and DTOs to reach domain ≥90% coverage
+ - [x] T051 Document minimal `citeloom.toml` and sample commands in `README.md`
 
 - [ ] T054 Add hybrid retrieval config flag and path in `query_chunks` (ingest-time vs query-time sparse note)
 - [ ] T055 Add integration test for hybrid flag in `tests/integration/test_query_hybrid.py` (verify both modes execute)

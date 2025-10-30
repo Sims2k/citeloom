@@ -4,7 +4,7 @@ from pathlib import Path
 
 def test_import_linter_contracts():
     result = subprocess.run(
-        ["uv", "run", "lint-imports", "--infile", "linter.ini"],
+        ["uv", "run", "lint-imports", "--config", "linter.ini"],
         cwd=Path(__file__).resolve().parents[2],
         capture_output=True,
         text=True,

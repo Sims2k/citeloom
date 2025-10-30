@@ -44,7 +44,7 @@ jobs:
 
       - name: Architecture contracts (import-linter)
         run: |
-          uvx lint-imports --infile linter.ini
+          uvx lint-imports --config linter.ini
 
       - name: Pytest with coverage
         run: uv run pytest --maxfail=1 --disable-warnings -q --cov=src --cov-report=term-missing

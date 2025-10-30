@@ -46,3 +46,28 @@ Command reference and examples will go here.
 Document `citeloom.toml` fields and examples here.
 
 See also: [Naming alternatives](docs/branding/naming-alternatives.md)
+
+### Minimal `citeloom.toml`
+
+```toml
+[project]
+id = "citeloom/clean-arch"
+collection = "proj-citeloom-clean-arch"
+embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
+hybrid_enabled = true
+
+[paths]
+references = "references/clean-arch.json"
+raw_assets = "assets/raw/"
+audit_dir = "var/audit/"
+
+[qdrant]
+url = "http://localhost:6333"
+```
+
+### Sample commands
+
+```bash
+uv run citeloom ingest --project citeloom/clean-arch ./assets/raw/clean-arch.pdf
+uv run citeloom query --project citeloom/clean-arch --q "entities vs value objects" --k 6
+```
