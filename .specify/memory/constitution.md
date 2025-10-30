@@ -1,12 +1,13 @@
 # citeloom Constitution
 <!--
 Sync Impact Report
-- Version change: 1.1.0 → 1.2.0
+- Version change: 1.2.0 → 1.3.0
 - Modified principles/sections:
   - Tooling & Workflow → expanded with authoritative Toolchain Policy
   - Testing/Coverage policy → clarified (domain ≥90%, prefer 100%)
-  - Observability → Pareto-minimal logging/tracing guidance
+  - Observability → Pareto-minimal logging/tracing guidance; correlation ID per ingest run
   - Security posture → de-emphasized initially
+  - CI/CD Gates → explicit mypy strict-domain enforcement and architecture import checks
 - Added sections:
   - Toolchain & Execution Policy (authoritative)
   - Operating Procedure (humans & agents)
@@ -109,7 +110,8 @@ uv sync
 # Quality gates
 uvx ruff format .        # optional write in CI; checks still required
 uvx ruff check .         # must pass
-uv run mypy .            # must pass
+uv run mypy .            # must pass (strict in src/domain)
+uv run mypy --strict src/domain  # enforce strict typing in domain package
 uv run pytest -q         # must pass
 # Coverage (domain ≥90%, prefer 100%; overall ≥80%)
 uv run pytest -q --cov=src/domain --cov-report=term-missing --cov-fail-under=90
@@ -119,7 +121,7 @@ uv run pytest -q --cov=src/domain --cov-report=term-missing --cov-fail-under=90
 
 Observability (Pareto-Minimal)
 - Goal: Minimal effort, maximal signal (Pareto principle).
-- Logs: Structured logs in infrastructure; redact PII; include correlation IDs where applicable.
+- Logs: Structured logs in infrastructure; redact PII; include a correlation ID per ingest run.
 - Tracing: Lightweight request/task correlation only (no heavy tracing until needed).
 - Metrics: Basic counters/timers for critical paths if present; add more only when justified by an ADR.
 - Environments: dev/stage/prod as needed; logging level tuned per env (e.g., DEBUG in dev, INFO in prod).
@@ -171,7 +173,7 @@ Operating Procedure (Humans & Agents)
 6. Commit: code + `pyproject.toml` + `uv.lock`
 7. Never: manual dep edits, `pip install`, manual venv activation
 
-**Version**: 1.2.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-10-30
+**Version**: 1.3.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-10-30
 # [PROJECT_NAME] Constitution
 <!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
 

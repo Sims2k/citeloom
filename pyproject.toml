@@ -46,6 +46,7 @@ strict = true
 
 [dependency-groups]
 dev = [
+    "import-linter>=2.5.2",
     "mypy>=1.18.2",
     "pytest>=8.4.2",
     "pytest-cov>=7.0.0",

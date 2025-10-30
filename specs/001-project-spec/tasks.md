@@ -27,33 +27,33 @@ description: "Task list template for feature implementation"
 
 **Purpose**: Core gates and governance compliance
 
-- [ ] T009 Create GitHub Actions CI with ruff/mypy/pytest in `.github/workflows/ci.yml` (domain coverage gate ≥90%)
-- [ ] T010 Add grep guard for forbidden `pip install` in CI script
-- [ ] T011 Ensure `.python-version` and `uv.lock` committed; verify `.gitignore` covers `.venv/`
-- [ ] T012 Create `docs/adr/0001-toolchain-standard.md` (pyenv+uv+Ruff)
-- [ ] T013 Create `citeloom.toml` sample at repo root with project `citeloom/clean-arch` and defaults
-- [ ] T014 Create sample directories: `assets/raw/`, `references/`, `var/audit/`
-- [ ] T015 Add sample CSL-JSON file `references/clean-arch.json` (stub minimal valid JSON)
-- [ ] T016 Add `docker-compose.yml` for local Qdrant (port 6333)
-- [ ] T017 [P] Create domain policy skeletons: `src/domain/policy/chunking_policy.py`, `src/domain/policy/retrieval_policy.py`
-- [ ] T018 [P] Create domain types: `src/domain/types.py` (value objects as needed)
-- [ ] T019 Create application port interfaces: 
+- [x] T009 Create GitHub Actions CI with ruff/mypy/pytest in `.github/workflows/ci.yml` (domain coverage gate ≥90%)
+- [x] T010 Add grep guard for forbidden `pip install` in CI script
+- [x] T011 Ensure `.python-version` and `uv.lock` committed; verify `.gitignore` covers `.venv/`
+- [x] T012 Create `docs/adr/0001-toolchain-standard.md` (pyenv+uv+Ruff)
+- [x] T013 Create `citeloom.toml` sample at repo root with project `citeloom/clean-arch` and defaults
+- [x] T014 Create sample directories: `assets/raw/`, `references/`, `var/audit/`
+- [x] T015 Add sample CSL-JSON file `references/clean-arch.json` (stub minimal valid JSON)
+- [x] T016 Add `docker-compose.yml` for local Qdrant (port 6333)
+- [x] T017 [P] Create domain policy skeletons: `src/domain/policy/chunking_policy.py`, `src/domain/policy/retrieval_policy.py`
+- [x] T018 [P] Create domain types: `src/domain/types.py` (value objects as needed)
+- [x] T019 Create application port interfaces: 
   - `src/application/ports/converter.py`
   - `src/application/ports/chunker.py`
   - `src/application/ports/metadata_resolver.py`
   - `src/application/ports/embeddings.py`
   - `src/application/ports/vector_index.py`
-- [ ] T020 Create application DTOs: `src/application/dto/ingest.py`, `src/application/dto/query.py`
-- [ ] T021 Create application use cases (stubs):
+- [x] T020 Create application DTOs: `src/application/dto/ingest.py`, `src/application/dto/query.py`
+- [x] T021 Create application use cases (stubs):
   - `src/application/use_cases/ingest_document.py`
   - `src/application/use_cases/query_chunks.py`
-- [ ] T022 Implement CLI scaffold with Typer: `src/infrastructure/cli/main.py` and `src/infrastructure/cli/commands/{ingest.py,query.py,inspect.py,validate.py}` (stubs print help)
-- [ ] T023 Implement logging setup: `src/infrastructure/logging.py` (structured logs)
-- [ ] T024 Architecture tests: configure `import-linter` or `pytest-archon` rules in `tests/architecture/`
-- [ ] T025 Create minimal unit test scaffolding in `tests/unit/` for policies and DTOs
+- [x] T022 Implement CLI scaffold with Typer: `src/infrastructure/cli/main.py` and `src/infrastructure/cli/commands/{ingest.py,query.py,inspect.py,validate.py}` (stubs print help)
+- [x] T023 Implement logging setup: `src/infrastructure/logging.py` (structured logs)
+- [x] T024 Architecture tests: configure `import-linter` or `pytest-archon` rules in `tests/architecture/`
+- [x] T025 Create minimal unit test scaffolding in `tests/unit/` for policies and DTOs
 
-- [ ] T052 Add CI mypy strict domain check step (assert `src/domain` uses strict in mypy config)
-- [ ] T053 Add CI architecture check step (run import-linter/pytest-archon to enforce inward deps)
+- [x] T052 Add CI mypy strict domain check step (assert `src/domain` uses strict in mypy config)
+- [x] T053 Add CI architecture check step (run import-linter/pytest-archon to enforce inward deps)
 
 **Checkpoint**: Foundation ready - user story implementation can begin in parallel
 
