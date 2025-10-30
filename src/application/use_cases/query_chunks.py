@@ -10,9 +10,25 @@ def query_chunks(
     embedder: EmbeddingPort,
     index: VectorIndexPort,
 ) -> QueryResult:
-    # For now dense-only; hybrid path handled later (Phase F)
+    # Dense path
     query_vec = embedder.embed([request.query_text], model_id="default")[0]
-    hits = index.search(query_vec, project_id=request.project_id, top_k=request.top_k)
+    dense_hits = list(index.search(query_vec, project_id=request.project_id, top_k=request.top_k))
+
+    hits = dense_hits
+    if request.hybrid:
+        # Naive sparse path: score by substring overlap length as a placeholder
+        def sparse_score(text: str) -> float:
+            q = request.query_text.lower()
+            t = (text or "").lower()
+            return float(len(q)) if q in t else 0.0
+
+        # Fetch some more from index (reuse dense result set here for stubbed adapter)
+        combined = []
+        for h in dense_hits:
+            s = sparse_score(h.get("text", ""))
+            combined.append({**h, "score": float(h.get("score", 0.0)) + s})
+        combined.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+        hits = combined[: request.top_k]
     items = []
     for h in hits:
         span = h.get("page_span")

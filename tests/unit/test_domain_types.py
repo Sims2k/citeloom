@@ -1,4 +1,4 @@
-from src.domain.types import ProjectId, CiteKey, PageSpan, SectionPath
+from domain.types import ProjectId, CiteKey, PageSpan, SectionPath
 
 
 def test_project_id_value():

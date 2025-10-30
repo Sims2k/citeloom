@@ -1,5 +1,5 @@
-from src.domain.policy.chunking_policy import ChunkingPolicy
-from src.domain.policy.retrieval_policy import RetrievalPolicy
+from domain.policy.chunking_policy import ChunkingPolicy
+from domain.policy.retrieval_policy import RetrievalPolicy
 
 
 def test_chunking_policy_defaults_and_equality():

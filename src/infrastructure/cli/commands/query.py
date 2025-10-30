@@ -1,11 +1,11 @@
 import typer
 
-from ...application.dto.query import QueryRequest
-from ...application.use_cases.query_chunks import query_chunks
-from ...application.ports.embeddings import EmbeddingPort
-from ...application.ports.vector_index import VectorIndexPort
-from ...adapters.fastembed_embeddings import FastEmbedAdapter
-from ...adapters.qdrant_index import QdrantIndexAdapter
+from application.dto.query import QueryRequest
+from application.use_cases.query_chunks import query_chunks
+from application.ports.embeddings import EmbeddingPort
+from application.ports.vector_index import VectorIndexPort
+from infrastructure.adapters.fastembed_embeddings import FastEmbedAdapter
+from infrastructure.adapters.qdrant_index import QdrantIndexAdapter
 
 app = typer.Typer(help="Query chunks from CiteLoom")
 

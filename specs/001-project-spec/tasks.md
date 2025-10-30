@@ -146,11 +146,11 @@ description: "Task list template for feature implementation"
  - [x] T050 [P] Add unit tests for policies and DTOs to reach domain ≥90% coverage
  - [x] T051 Document minimal `citeloom.toml` and sample commands in `README.md`
 
-- [ ] T054 Add hybrid retrieval config flag and path in `query_chunks` (ingest-time vs query-time sparse note)
-- [ ] T055 Add integration test for hybrid flag in `tests/integration/test_query_hybrid.py` (verify both modes execute)
-- [ ] T056 Add perf smoke: ingest single small PDF ≤ 2 min in `tests/integration/test_perf_smoke.py` (mark as slow, skip in default if env var missing)
-- [ ] T057 Add perf smoke: query top-6 ≤ 1s against local Qdrant in `tests/integration/test_perf_smoke.py`
-- [ ] T058 Ensure correlation id is logged per ingest run (augment `validate` or ingest path) and assert presence in test logs `tests/integration/test_logging.py`
+- [x] T054 Add hybrid retrieval config flag and path in `query_chunks` (ingest-time vs query-time sparse note)
+- [x] T055 Add integration test for hybrid flag in `tests/integration/test_query_hybrid.py` (verify both modes execute)
+- [x] T056 Add perf smoke: ingest single small PDF ≤ 2 min in `tests/integration/test_perf_smoke.py` (mark as slow, skip in default if env var missing)
+- [x] T057 Add perf smoke: query top-6 ≤ 1s against local Qdrant in `tests/integration/test_perf_smoke.py`
+- [x] T058 Ensure correlation id is logged per ingest run (augment `validate` or ingest path) and assert presence in test logs `tests/integration/test_logging.py`
 
 ---
 

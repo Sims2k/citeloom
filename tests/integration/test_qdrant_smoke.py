@@ -1,4 +1,4 @@
-from src.infrastructure.adapters.qdrant_index import QdrantIndexAdapter
+from infrastructure.adapters.qdrant_index import QdrantIndexAdapter
 
 
 def test_qdrant_smoke_inmemory():

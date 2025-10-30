@@ -1,5 +1,5 @@
-from src.infrastructure.adapters.docling_converter import DoclingConverterAdapter
-from src.infrastructure.adapters.docling_chunker import DoclingHybridChunkerAdapter
+from infrastructure.adapters.docling_converter import DoclingConverterAdapter
+from infrastructure.adapters.docling_chunker import DoclingHybridChunkerAdapter
 
 
 def test_docling_smoke_stub():
