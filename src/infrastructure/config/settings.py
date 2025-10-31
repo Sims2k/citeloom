@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-from .environment import get_env, load_environment_variables
+from .environment import get_env, get_zotero_config, load_environment_variables
 
 
 class ChunkingSettings(BaseModel):
@@ -161,4 +161,35 @@ class Settings(BaseModel):
                 f"Project '{project_id}' not found. Available projects: {available}"
             )
         return self.projects[project_id]
+    
+    def get_zotero_config(self) -> dict[str, Any]:
+        """
+        T095: Get Zotero configuration from environment variables.
+        
+        Returns Zotero configuration loaded from environment variables.
+        This method uses environment variable precedence (system env > .env file).
+        
+        Configuration keys:
+        - ZOTERO_LIBRARY_ID: Zotero library ID
+        - ZOTERO_LIBRARY_TYPE: 'user' or 'group' (defaults to 'user')
+        - ZOTERO_API_KEY: API key for remote access (optional)
+        - ZOTERO_LOCAL: Boolean flag for local access (defaults to False)
+        
+        Returns:
+            Dict with Zotero configuration. Keys:
+            - library_id: str | None
+            - library_type: str (defaults to 'user')
+            - api_key: str | None (for remote access)
+            - local: bool (defaults to False)
+        
+        Example:
+            >>> settings = Settings.from_toml()
+            >>> zotero_config = settings.get_zotero_config()
+            >>> # Use zotero_config with ZoteroPyzoteroResolver
+        """
+        # Ensure environment is loaded
+        load_environment_variables()
+        
+        # Get Zotero config from environment
+        return get_zotero_config()
 

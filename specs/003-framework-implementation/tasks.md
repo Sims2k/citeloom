@@ -210,13 +210,13 @@
 
 ### Implementation for User Story 8
 
-- [ ] T090 [US8] Add python-dotenv loading in src/infrastructure/config/environment.py with automatic .env file detection
-- [ ] T091 [US8] Implement precedence logic (system env > .env file values) in src/infrastructure/config/environment.py
-- [ ] T092 [US8] Add graceful handling of missing optional API keys (OPENAI_API_KEY, Better BibTeX JSON-RPC when unavailable) in src/infrastructure/config/environment.py with fallback to defaults
-- [ ] T093 [US8] Add clear error messages for missing required API keys (QDRANT_API_KEY when auth required, ZOTERO_LIBRARY_ID/ZOTERO_API_KEY for remote access) in src/infrastructure/config/environment.py
-- [ ] T094 [US8] Add Zotero configuration support (ZOTERO_LIBRARY_ID, ZOTERO_LIBRARY_TYPE, ZOTERO_API_KEY, ZOTERO_LOCAL) in src/infrastructure/config/environment.py
-- [ ] T095 [US8] Update Settings class to use environment-loaded values including Zotero config in src/infrastructure/config/settings.py
-- [ ] T096 [US8] Verify .env file is in .gitignore and document Zotero configuration in README
+- [X] T090 [US8] Add python-dotenv loading in src/infrastructure/config/environment.py with automatic .env file detection
+- [X] T091 [US8] Implement precedence logic (system env > .env file values) in src/infrastructure/config/environment.py
+- [X] T092 [US8] Add graceful handling of missing optional API keys (OPENAI_API_KEY, Better BibTeX JSON-RPC when unavailable) in src/infrastructure/config/environment.py with fallback to defaults
+- [X] T093 [US8] Add clear error messages for missing required API keys (QDRANT_API_KEY when auth required, ZOTERO_LIBRARY_ID/ZOTERO_API_KEY for remote access) in src/infrastructure/config/environment.py
+- [X] T094 [US8] Add Zotero configuration support (ZOTERO_LIBRARY_ID, ZOTERO_LIBRARY_TYPE, ZOTERO_API_KEY, ZOTERO_LOCAL) in src/infrastructure/config/environment.py
+- [X] T095 [US8] Update Settings class to use environment-loaded values including Zotero config in src/infrastructure/config/settings.py
+- [X] T096 [US8] Verify .env file is in .gitignore and document Zotero configuration in README
 
 **Checkpoint**: At this point, all User Stories 1-8 should be complete
 
