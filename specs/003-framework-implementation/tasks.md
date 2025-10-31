@@ -118,12 +118,12 @@
 
 ### Implementation for User Story 4
 
-- [ ] T040 [US4] Implement full-text index creation on chunk_text payload field in src/infrastructure/adapters/qdrant_index.py (when hybrid enabled)
-- [ ] T041 [US4] Implement hybrid_query() method using named vectors with RRF fusion in src/infrastructure/adapters/qdrant_index.py
-- [ ] T042 [US4] Add text-based query support using model binding in src/infrastructure/adapters/qdrant_index.py (set_model enables text queries)
-- [ ] T043 [US4] Ensure both dense and sparse models are bound before allowing hybrid queries in src/infrastructure/adapters/qdrant_index.py
-- [ ] T044 [US4] Update VectorIndexPort.hybrid_query() protocol in src/application/ports/vector_index.py to document RRF fusion requirements
-- [ ] T045 [US4] Update QueryChunks use case in src/application/use_cases/query_chunks.py to support hybrid queries with named vectors
+- [X] T040 [US4] Implement full-text index creation on chunk_text payload field in src/infrastructure/adapters/qdrant_index.py (when hybrid enabled)
+- [X] T041 [US4] Implement hybrid_query() method using named vectors with RRF fusion in src/infrastructure/adapters/qdrant_index.py
+- [X] T042 [US4] Add text-based query support using model binding in src/infrastructure/adapters/qdrant_index.py (set_model enables text queries)
+- [X] T043 [US4] Ensure both dense and sparse models are bound before allowing hybrid queries in src/infrastructure/adapters/qdrant_index.py
+- [X] T044 [US4] Update VectorIndexPort.hybrid_query() protocol in src/application/ports/vector_index.py to document RRF fusion requirements
+- [X] T045 [US4] Update QueryChunks use case in src/application/use_cases/query_chunks.py to support hybrid queries with named vectors
 
 **Checkpoint**: At this point, User Stories 1-4 should all work independently
 

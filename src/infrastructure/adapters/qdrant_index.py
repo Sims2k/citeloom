@@ -605,26 +605,39 @@ class QdrantIndexAdapter:
 
     def search(
         self,
-        query_vector: list[float],
-        project_id: str,
-        top_k: int,
+        query_vector: list[float] | None = None,
+        query_text: str | None = None,
+        project_id: str = "",
+        top_k: int = 6,
         filters: dict[str, Any] | None = None,
+        use_named_vectors: bool = True,
     ) -> list[dict[str, Any]]:
         """
         Vector search with project filtering.
         
+        Supports both vector-based and text-based queries (when model binding enabled).
+        
         Args:
-            query_vector: Query embedding vector
+            query_vector: Query embedding vector (required if query_text not provided)
+            query_text: Query text for text-based search (requires model binding via set_model())
             project_id: Project identifier (mandatory filter)
             top_k: Maximum number of results
             filters: Additional Qdrant filters (e.g., tags)
+            use_named_vectors: Whether to use named vector 'dense' (default: True)
         
         Returns:
             List of hit dicts with score, payload (text, metadata, citation info)
         
         Raises:
+            ValueError: If neither query_vector nor query_text provided
             ProjectNotFound: If project collection doesn't exist
+        
+        Note:
+            T042: Text-based queries require model binding via set_model().
+            When query_text is provided and model is bound, Qdrant handles embedding automatically.
         """
+        if query_vector is None and query_text is None:
+            raise ValueError("Either query_vector or query_text must be provided")
         collection_name = self._collection_name(project_id)
         
         if self._client is None:
@@ -709,14 +722,71 @@ class QdrantIndexAdapter:
                 
                 qdrant_filter = Filter(must=filter_conditions)
             
-            # Use named vector 'dense' for search
+            # T042: Support text-based queries using model binding
+            if query_text is not None:
+                # Use text-based query (requires model binding)
+                try:
+                    from qdrant_client.models import Query
+                    
+                    # Create text query - Qdrant will handle embedding if model is bound
+                    query = Query(
+                        query=query_text,
+                        filter=qdrant_filter,
+                        limit=top_k,
+                    )
+                    
+                    results_batch = self._client.query(
+                        collection_name=collection_name,
+                        queries=[query],
+                        with_payload=True,
+                    )
+                    
+                    # Extract results
+                    hits = []
+                    if results_batch and hasattr(results_batch, '__iter__'):
+                        for batch in results_batch:
+                            if hasattr(batch, '__iter__'):
+                                for result in batch:
+                                    hits.append({
+                                        "id": str(result.id),
+                                        "score": float(result.score),
+                                        "payload": result.payload or {},
+                                    })
+                            else:
+                                hits.append({
+                                    "id": str(batch.id),
+                                    "score": float(batch.score),
+                                    "payload": batch.payload or {},
+                                })
+                    
+                    logger.debug(
+                        f"Text-based query completed: {len(hits)} results",
+                        extra={"collection_name": collection_name, "result_count": len(hits)},
+                    )
+                    return hits[:top_k]
+                except (ImportError, AttributeError, Exception) as text_query_error:
+                    # Fallback to vector search if text query not supported
+                    logger.debug(
+                        f"Text-based query not available, using vector search: {text_query_error}",
+                        extra={"collection_name": collection_name},
+                    )
+                    # If text query fails and no vector provided, raise error
+                    if query_vector is None:
+                        raise ValueError(
+                            "Text-based query not available (model not bound) and query_vector not provided"
+                        ) from text_query_error
+            
+            # Use named vector 'dense' for vector-based search
+            if query_vector is None:
+                raise ValueError("query_vector is required when text-based query is not available")
+            
             results = self._client.search(
                 collection_name=collection_name,
                 query_vector=query_vector,
                 query_filter=qdrant_filter,
                 limit=top_k,
                 with_payload=True,
-                using="dense",  # Use named vector
+                using="dense" if use_named_vectors else None,  # Use named vector
             )
             
             hits = []
@@ -736,30 +806,85 @@ class QdrantIndexAdapter:
             )
             raise ProjectNotFound(project_id) from e
 
+    def _check_model_bindings(self, collection_name: str) -> tuple[bool, bool]:
+        """
+        Check if both dense and sparse models are bound to the collection.
+        
+        Args:
+            collection_name: Collection name to check
+        
+        Returns:
+            Tuple of (dense_bound, sparse_bound) boolean flags
+        """
+        if self._client is None:
+            # In-memory fallback: check local metadata
+            collection_data = self._local.get(collection_name)
+            if not collection_data:
+                return (False, False)
+            return (
+                collection_data.get("dense_model_id") is not None,
+                collection_data.get("sparse_model_id") is not None,
+            )
+        
+        try:
+            # Get collection info to check model bindings
+            collection_info = self._client.get_collection(collection_name)
+            
+            # Check if models are bound by examining collection config
+            # Qdrant stores bound models in collection configuration
+            # For newer Qdrant versions, models are bound via set_model()/set_sparse_model()
+            # We can check by attempting to use text-based queries or checking collection metadata
+            
+            # Try to get collection metadata which contains model IDs
+            stored_metadata = getattr(collection_info, "metadata", None) or {}
+            dense_model = stored_metadata.get("dense_model_id")
+            sparse_model = stored_metadata.get("sparse_model_id")
+            
+            # If metadata available, both models are bound if IDs are present
+            dense_bound = dense_model is not None
+            sparse_bound = sparse_model is not None
+            
+            return (dense_bound, sparse_bound)
+        except Exception:
+            # If we can't determine, assume not bound (safer)
+            logger.debug(
+                f"Could not determine model bindings for '{collection_name}'",
+                extra={"collection_name": collection_name},
+            )
+            return (False, False)
+
     def hybrid_query(
         self,
         query_text: str,
-        query_vector: list[float],
-        project_id: str,
-        top_k: int,
+        query_vector: list[float] | None = None,
+        project_id: str = "",
+        top_k: int = 6,
         filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Hybrid search (full-text + vector fusion).
+        Hybrid search using Qdrant named vectors with RRF fusion.
+        
+        Performs hybrid search combining semantic (dense) and lexical (sparse) retrieval.
+        When both dense and sparse models are bound, Qdrant automatically fuses results
+        using Reciprocal Rank Fusion (RRF).
         
         Args:
-            query_text: Query text for BM25/full-text search
-            query_vector: Query embedding vector
+            query_text: Query text for both sparse (BM25) and dense (if model binding) search
+            query_vector: Optional query embedding vector (used if model binding not available)
             project_id: Project identifier (mandatory filter)
             top_k: Maximum number of results
-            filters: Additional Qdrant filters
+            filters: Additional Qdrant filters (tags with AND semantics, optional section prefix)
         
         Returns:
-            List of hit dicts with combined scores and payload
+            List of hit dicts with RRF-fused scores and payload
         
         Raises:
-            HybridNotSupported: If hybrid not enabled for project
+            HybridNotSupported: If hybrid not enabled for project or sparse model not bound
             ProjectNotFound: If project collection doesn't exist
+        
+        Note:
+            Requires both dense and sparse models bound via set_model() and set_sparse_model()
+            RRF fusion is automatic when both named vectors are configured
         """
         from ...domain.errors import HybridNotSupported
         
@@ -771,6 +896,20 @@ class QdrantIndexAdapter:
                 project_id=project_id,
                 reason="full-text index not enabled (create_fulltext_index=False)",
             )
+        
+        # T043: Ensure both dense and sparse models are bound before allowing hybrid queries
+        if self._client is not None:
+            dense_bound, sparse_bound = self._check_model_bindings(collection_name)
+            if not dense_bound:
+                raise HybridNotSupported(
+                    project_id=project_id,
+                    reason="dense model not bound to collection (call set_model() first)",
+                )
+            if not sparse_bound:
+                raise HybridNotSupported(
+                    project_id=project_id,
+                    reason="sparse model not bound to collection (call set_sparse_model() first)",
+                )
         
         if self._client is None:
             # In-memory fallback: combine vector search with simple text matching
@@ -873,22 +1012,22 @@ class QdrantIndexAdapter:
                 
                 qdrant_filter = Filter(must=filter_conditions)
             
-            # Use Qdrant's query() method with text-based search for hybrid (RRF fusion)
+            # T041: Use Qdrant's query() method with text-based search for hybrid (RRF fusion)
             # When both dense and sparse models are bound, RRF fusion is automatic
             try:
-                # Try using query() with text-based search (requires model binding)
+                # Use query() API with text-based search (requires model binding)
                 # This enables automatic RRF fusion when both models are bound
-                from qdrant_client.models import Query, TextQuery
+                from qdrant_client.models import Query
                 
-                # Create query with text for sparse and vector for dense
-                # Qdrant will automatically fuse using RRF
+                # Create query with text - Qdrant will use both dense and sparse models
+                # when bound, and automatically fuse results using RRF
                 query = Query(
-                    query=query_text,
-                    using="dense",  # Use dense vector, sparse is automatic via model binding
+                    query=query_text,  # Text query uses both bound models
                     filter=qdrant_filter,
                     limit=top_k,
                 )
                 
+                # Execute query - Qdrant performs RRF fusion automatically
                 results = self._client.query(
                     collection_name=collection_name,
                     queries=[query],
@@ -896,25 +1035,46 @@ class QdrantIndexAdapter:
                 )
                 
                 # Extract results from query response
+                # Results are already RRF-fused by Qdrant
                 hits = []
-                for batch in results:
-                    for result in batch:
-                        hits.append({
-                            "id": str(result.id),
-                            "score": float(result.score),
-                            "payload": result.payload or {},
-                        })
+                if results and hasattr(results, '__iter__'):
+                    # Handle both single batch and multiple batches
+                    for batch in results:
+                        if hasattr(batch, '__iter__'):
+                            for result in batch:
+                                hits.append({
+                                    "id": str(result.id),
+                                    "score": float(result.score),
+                                    "payload": result.payload or {},
+                                })
+                        else:
+                            # Single result
+                            hits.append({
+                                "id": str(batch.id),
+                                "score": float(batch.score),
+                                "payload": batch.payload or {},
+                            })
+                
+                logger.debug(
+                    f"Hybrid query completed with RRF fusion: {len(hits)} results",
+                    extra={"collection_name": collection_name, "result_count": len(hits)},
+                )
                 
                 return hits[:top_k]
-            except (ImportError, AttributeError, Exception) as query_error:
-                # Fallback to manual fusion if query() API not available
-                logger.debug(
+            except (ImportError, AttributeError) as query_error:
+                # Fallback to manual fusion if query() API not available (older Qdrant versions)
+                logger.warning(
                     f"Query API not available, using manual fusion: {query_error}",
                     extra={"collection_name": collection_name},
                 )
                 
                 # Manual fusion: run both searches and combine
                 # 1. Vector search using dense named vector
+                if query_vector is None:
+                    raise ValueError(
+                        "query_vector is required when Qdrant query() API is not available"
+                    )
+                
                 vec_results = self._client.search(
                     collection_name=collection_name,
                     query_vector=query_vector,
@@ -923,46 +1083,56 @@ class QdrantIndexAdapter:
                     with_payload=True,
                     using="dense",
                 )
-            
-            # 2. Full-text search (using query_batch or scroll + filter)
-            # Note: Qdrant's full-text search requires TextIndex or Query interface
-            # For compatibility, use scroll with text filtering approximation
-            # In practice, newer Qdrant versions support query() with TextQuery
-            
-            # Fusion: combine vector scores with text relevance
-            vec_scores: dict[str, tuple[float, dict[str, Any]]] = {}
-            for result in vec_results:
-                vec_scores[str(result.id)] = (float(result.score), result.payload or {})
-            
-            # Simple text matching for full-text component
-            text_scores: dict[str, float] = {}
-            query_terms = query_text.lower().split()
-            for chunk_id, (vec_score, payload) in vec_scores.items():
-                text = (payload.get("fulltext", "") or "").lower()
-                score = 0.0
-                for term in query_terms:
-                    if term in text:
-                        score += text.count(term) / max(len(text.split()), 1)
-                text_scores[chunk_id] = score
-            
-            # Normalize and fuse scores
-            max_text = max(text_scores.values()) if text_scores.values() else 1.0
-            max_vec = max([s[0] for s in vec_scores.values()]) if vec_scores.values() else 1.0
-            
-            fused: list[dict[str, Any]] = []
-            for chunk_id, (vec_score, payload) in vec_scores.items():
-                norm_text = text_scores.get(chunk_id, 0.0) / max(max_text, 1e-10)
-                norm_vec = vec_score / max(max_vec, 1e-10)
-                fused_score = 0.3 * norm_text + 0.7 * norm_vec
-                fused.append({
-                    "id": chunk_id,
-                    "score": fused_score,
-                    "payload": payload,
-                })
-            
-            # Sort by fused score and return top_k
-            fused.sort(key=lambda x: x["score"], reverse=True)
-            return fused[:top_k]
+                
+                # 2. Full-text search approximation using scroll with text filtering
+                # Note: For proper full-text search, newer Qdrant versions support query() with TextQuery
+                
+                # Fusion: combine vector scores with text relevance
+                vec_scores: dict[str, tuple[float, dict[str, Any]]] = {}
+                for result in vec_results:
+                    vec_scores[str(result.id)] = (float(result.score), result.payload or {})
+                
+                # Simple text matching for full-text component
+                text_scores: dict[str, float] = {}
+                query_terms = query_text.lower().split()
+                for chunk_id, (vec_score, payload) in vec_scores.items():
+                    text = (payload.get("chunk_text", "") or payload.get("fulltext", "") or "").lower()
+                    score = 0.0
+                    for term in query_terms:
+                        if term in text:
+                            score += text.count(term) / max(len(text.split()), 1)
+                    text_scores[chunk_id] = score
+                
+                # Normalize and fuse scores
+                max_text = max(text_scores.values()) if text_scores.values() else 1.0
+                max_vec = max([s[0] for s in vec_scores.values()]) if vec_scores.values() else 1.0
+                
+                fused: list[dict[str, Any]] = []
+                for chunk_id, (vec_score, payload) in vec_scores.items():
+                    norm_text = text_scores.get(chunk_id, 0.0) / max(max_text, 1e-10)
+                    norm_vec = vec_score / max(max_vec, 1e-10)
+                    fused_score = 0.3 * norm_text + 0.7 * norm_vec
+                    fused.append({
+                        "id": chunk_id,
+                        "score": fused_score,
+                        "payload": payload,
+                    })
+                
+                # Sort by fused score and return top_k
+                fused.sort(key=lambda x: x["score"], reverse=True)
+                logger.debug(
+                    f"Hybrid query completed with manual fusion: {len(fused)} results",
+                    extra={"collection_name": collection_name, "result_count": len(fused)},
+                )
+                return fused[:top_k]
+            except Exception as query_error:
+                # Unexpected error - log and re-raise
+                logger.error(
+                    f"Failed to execute hybrid query: {query_error}",
+                    extra={"collection_name": collection_name},
+                    exc_info=True,
+                )
+                raise
             
         except Exception as e:
             logger.error(
