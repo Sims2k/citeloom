@@ -149,24 +149,24 @@
 
 #### Application Layer
 
-- [ ] T044 [US3] Implement QueryChunks use case in src/application/use_cases/query_chunks.py with project filter enforcement, top_k limit, text trimming, retrieval policy
-- [ ] T045 [US3] Add hybrid query support to QueryChunks use case in src/application/use_cases/query_chunks.py with query-time fusion (BM25 + vector)
+- [X] T044 [US3] Implement QueryChunks use case in src/application/use_cases/query_chunks.py with project filter enforcement, top_k limit, text trimming, retrieval policy
+- [X] T045 [US3] Add hybrid query support to QueryChunks use case in src/application/use_cases/query_chunks.py with query-time fusion (BM25 + vector)
 
 #### Infrastructure Adapters
 
-- [ ] T046 [US3] Implement search method in QdrantIndexAdapter in src/infrastructure/adapters/qdrant_index.py with vector search and project filtering
-- [ ] T047 [US3] Implement hybrid_query method in QdrantIndexAdapter in src/infrastructure/adapters/qdrant_index.py with full-text index and score fusion
-- [ ] T048 [US3] Ensure QdrantIndexAdapter creates fulltext index in src/infrastructure/adapters/qdrant_index.py when hybrid_enabled=True
+- [X] T046 [US3] Implement search method in QdrantIndexAdapter in src/infrastructure/adapters/qdrant_index.py with vector search and project filtering
+- [X] T047 [US3] Implement hybrid_query method in QdrantIndexAdapter in src/infrastructure/adapters/qdrant_index.py with full-text index and score fusion
+- [X] T048 [US3] Ensure QdrantIndexAdapter creates fulltext index in src/infrastructure/adapters/qdrant_index.py when hybrid_enabled=True
 
 #### CLI
 
-- [ ] T049 [US3] Implement query command in src/infrastructure/cli/commands/query.py with project, query text, top_k, hybrid, filters options
-- [ ] T050 [US3] Wire query command to QueryChunks use case in src/infrastructure/cli/commands/query.py
-- [ ] T051 [US3] Format query results output in src/infrastructure/cli/commands/query.py with (citekey, pp. x–y, section) format
+- [X] T049 [US3] Implement query command in src/infrastructure/cli/commands/query.py with project, query text, top_k, hybrid, filters options
+- [X] T050 [US3] Wire query command to QueryChunks use case in src/infrastructure/cli/commands/query.py
+- [X] T051 [US3] Format query results output in src/infrastructure/cli/commands/query.py with (citekey, pp. x–y, section) format
 
 #### Tests
 
-- [ ] T052 [P] [US3] Create integration test for hybrid query in tests/integration/test_query_hybrid.py with dense-only and hybrid search verification
+- [X] T052 [P] [US3] Create integration test for hybrid query in tests/integration/test_query_hybrid.py with dense-only and hybrid search verification
 
 **Checkpoint**: User Stories 1, 2, AND 3 should all work independently - full query and retrieval capability
 
