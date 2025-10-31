@@ -3,28 +3,18 @@ Weave long-form sources into small, citable context for your AI work.
 
 <!--
 Sync Impact Report
-- Version change: 1.2.0 → 1.3.0
+- Version change: 1.4.0 → 1.5.0
 - Modified principles/sections:
-  - Tooling & Workflow → expanded with authoritative Toolchain Policy
-  - Testing/Coverage policy → clarified (domain ≥90%, prefer 100%)
-  - Observability → Pareto-minimal logging/tracing guidance; correlation ID per ingest run
-  - Security posture → de-emphasized initially
-  - CI/CD Gates → explicit mypy strict-domain enforcement and architecture import checks
+  - MCP Integration Patterns → added resilience patterns (exponential backoff, error taxonomy completeness)
+  - Vector Database Patterns → added resume capability for long-running batch operations
 - Added sections:
-  - Toolchain & Execution Policy (authoritative)
-  - Operating Procedure (humans & agents)
-  - Branching Policy (trunk-based: main-only)
+  - None (enhanced existing sections)
 - Removed sections:
   - None
 - Templates requiring updates:
-  - .specify/templates/plan-template.md ✅ aligned (Constitution Check generic)
-  - .specify/templates/spec-template.md ✅ no change needed
-  - .specify/templates/tasks-template.md ✅ no change needed
-  - README.md ✅ updated with Developer Quickstart
+  - None (all templates remain compatible)
 - Deferred TODOs:
   - TODO(RATIFICATION_DATE): Original adoption date unknown; set once confirmed
-  - TODO(PERSISTENCE): Confirm DB/files/none and migration policy
-  - (none for coverage/observability/security baseline)
 -->
 
 ## Core Principles
@@ -102,6 +92,16 @@ Testing
   - Architecture tests (structure + dependency direction)
 - Coverage: Domain 100% preferred (≥90% minimum); overall target ≥80%
 
+Performance & Hybrid Retrieval
+- **Query-time hybrid retrieval** (authoritative): Implement hybrid search using query-time fusion of full-text (BM25) and vector search, without storing separate sparse vectors. This is the recommended approach for modern vector databases (2024-2025 best practice).
+  - Full-text index on `fulltext` payload field in Qdrant
+  - Combine BM25 and vector similarity scores at query time (e.g., weighted fusion: 0.3 * BM25 + 0.7 * vector)
+  - Document fusion policy in ADR when implemented
+- **Ingest-time sparse vectors** (alternative): Not recommended initially; requires additional storage overhead and separate sparse index management. May be considered later via ADR if query-time hybrid proves insufficient.
+- Performance smoke tests are provided and SKIPPED by default. To enable locally or in perf CI, set environment variable `CITELOOM_RUN_PERF=1`.
+- Perf targets: ingest ≤ 2 minutes for two 50+ page PDFs; query top-6 ≤ 1s for projects with ≤10,000 chunks; hybrid query ≤ 1.5s.
+- **Large document support**: System must handle documents up to 1000+ pages that exceed LLM context windows, requiring effective chunking with overlap to preserve context across boundaries.
+
 CI/CD Gates (defaults)
 ```bash
 # Environment bootstrap
@@ -114,7 +114,7 @@ uvx ruff format .        # optional write in CI; checks still required
 uvx ruff check .         # must pass
 uv run mypy .            # must pass (strict in src/domain)
 uv run mypy --strict src/domain  # enforce strict typing in domain package
-uv run pytest -q         # must pass
+uv run pytest -q         # must pass (perf smokes skipped unless CITELOOM_RUN_PERF=1)
 # Coverage (domain ≥90%, prefer 100%; overall ≥80%)
 uv run pytest -q --cov=src/domain --cov-report=term-missing --cov-fail-under=90
 # Optionally enforce overall threshold when broader coverage in place:
@@ -124,14 +124,19 @@ uv run pytest -q --cov=src/domain --cov-report=term-missing --cov-fail-under=90
 Observability (Pareto-Minimal)
 - Goal: Minimal effort, maximal signal (Pareto principle).
 - Logs: Structured logs in infrastructure; redact PII; include a correlation ID per ingest run.
+- CLI ingest MUST emit a `correlation_id=<uuid>` line to enable testable tracing.
+- **Audit logs**: JSONL format per ingest operation documenting chunk counts, document IDs, embedding models used, processing durations, and warnings. Store in `var/audit/` directory.
 - Tracing: Lightweight request/task correlation only (no heavy tracing until needed).
 - Metrics: Basic counters/timers for critical paths if present; add more only when justified by an ADR.
 - Environments: dev/stage/prod as needed; logging level tuned per env (e.g., DEBUG in dev, INFO in prod).
+- **Metadata resolution**: Log `MetadataMissing` warnings when citation metadata cannot be matched, but proceed with ingest (non-blocking). Provide actionable hints for resolution.
 
-Operational Clarifications (to be decided by ADRs)
-- Runtime entrypoints: CLI (primary). Future: HTTP API/workers/library via adapters as needed
-- Data & state: TODO(PERSISTENCE) (DB/files/none) and migration policy
-- Security & privacy: Initial posture: not a focus area. Avoid logging PII; use least-privilege by default. Formal authN/Z and secrets management to be introduced via ADR when requirements emerge.
+Operational Clarifications
+- Runtime entrypoints: CLI (primary). MCP server for AI editor integration (Cursor, Claude Desktop). Future: HTTP API/workers/library via adapters as needed.
+- **Data & state**: Qdrant vector database (per-project collections), local filesystem (CSL-JSON reference files, audit logs). No traditional relational database required.
+- **Data retention**: No automatic deletion policies. Manual deletion commands required for data lifecycle management. Users retain full control.
+- Security & privacy: Initial posture: single-user local system (no authentication for CLI), optional authentication for MCP tools. Avoid logging PII; use least-privilege by default. Never log API keys or secrets. Formal authN/Z and secrets management via environment variables only.
+- **Concurrent operations**: Optimistic concurrency with last-write-wins semantics. Deterministic chunk IDs ensure idempotent deduplication. No pessimistic locking required for single-user local system.
 
 ## Governance
 
@@ -175,54 +180,92 @@ Operating Procedure (Humans & Agents)
 6. Commit: code + `pyproject.toml` + `uv.lock`
 7. Never: manual dep edits, `pip install`, manual venv activation
 
-**Version**: 1.3.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-10-30
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+## Vector Database Patterns
 
-## Core Principles
+**Project Scoping**
+- Use **per-project collections** in Qdrant (e.g., `proj-citeloom-clean-arch`). Never create a mega-collection that mixes projects.
+- Enforce **strict project filtering** in all retrieval operations (mandatory `project` filter at adapter level).
+- Store `embed_model` in collection metadata; use for write-guard validation.
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+**Embedding Model Consistency**
+- **Write-guard policy**: Block upserts if `embed_model` doesn't match collection's stored model (unless migration flag is explicitly set).
+- Validate tokenizer family matches embedding model family before chunking (tokenizer-embedding alignment is a first-class policy requirement).
+- Migration path: Use `--force-rebuild` flag or create new collection suffix (e.g., `-v2`) for model changes.
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+**Idempotency & Deterministic IDs**
+- Generate deterministic chunk IDs from: `(doc_id, page_span/section_path, embedding_model_id, chunk_idx)`.
+- Enable idempotent upserts: re-ingesting same document produces no duplicates.
+- Support directory-based batch processing without explicit size limits (user controls scope via directory selection).
+- **Resume capability**: For long-running batch operations (reindex with document count limits), implement state tracking/checkpointing to enable resume of partial operations. State must be recoverable and safe for interruption.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+**Payload Schema (Stable)**
+- Required fields: `project`, `source` (path/title/doi/url), `zotero` (citekey/tags/collections), `doc` (page_span/section/section_path/chunk_idx), `embed_model`, `version`.
+- Optional: `fulltext` (required if query-time hybrid enabled for BM25 indexing).
+- Indexes: Keyword on `project` and `zotero.tags`, full-text on `fulltext` (if hybrid enabled).
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+## Document Processing Patterns
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+**Chunking Strategy**
+- **Heading-aware segmentation**: Preserve document structure (heading hierarchy, page numbers, sections) in chunks.
+- **Tokenizer alignment**: Chunking tokenizer MUST match embedding model tokenizer family (e.g., MiniLM tokenizer for MiniLM embeddings). Enforced via policy validation.
+- **Default policy**: `max_tokens=450`, `overlap_tokens=60`, `heading_context=1-2` ancestor headings included.
+- **Large document support**: Handle documents up to 1000+ pages with effective overlap to preserve context across chunk boundaries.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+**Citation Metadata Integration**
+- **Zotero CSL-JSON**: Per-project CSL-JSON files (Better BibTeX auto-export, "Keep updated").
+- **Matching order**: DOI-first (most reliable), then normalized title (fuzzy threshold), then `source_hint`.
+- **Non-blocking**: If metadata cannot be matched, log `MetadataMissing` warning and proceed with ingest. Chunks remain usable without full metadata.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+## MCP Integration Patterns
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+**Tool Design**
+- **Time-bounded operations**: Per-tool timeouts (8-15 seconds depending on operation complexity).
+- **Project scoping**: All tools enforce strict project filtering. No cross-project data leakage.
+- **Output shaping**: Always return trimmed `render_text` (≤max_chars_per_chunk policy) plus citation-ready metadata. Never dump full text by default.
+- **Error taxonomy**: Standardized error codes: `INVALID_PROJECT`, `EMBEDDING_MISMATCH`, `HYBRID_NOT_SUPPORTED`, `INDEX_UNAVAILABLE`, `TIMEOUT`.
+- **Batch limits**: `store_chunks` accepts 100-500 chunks per batch.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+**Resiliency**
+- Per-tool timeouts with clear timeout errors.
+- Consistent error codes with human-readable messages.
+- Rate limiting and batch size constraints where appropriate.
+- **External service failures**: Implement exponential backoff retry logic for vector database operations (upsert, search) with configurable retry limits and partial progress preservation. Fail gracefully with clear error messages if retries exhaust.
+- **Error taxonomy completeness**: All MCP tools and CLI commands MUST return standardized error codes from the complete taxonomy: `INVALID_PROJECT`, `EMBEDDING_MISMATCH`, `HYBRID_NOT_SUPPORTED`, `INDEX_UNAVAILABLE`, `TIMEOUT`.
 
-## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
+## Concurrent Operations Policy
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+**Strategy**: Optimistic concurrency (last-write-wins)
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Rationale**: Single-user local system where deterministic chunk IDs provide idempotent deduplication. No pessimistic locking needed.
+
+**Behavior**:
+- Allow concurrent operations (simultaneous ingests, queries during ingest).
+- Deterministic chunk IDs ensure no duplicates on re-ingest.
+- Last-write-wins semantics resolve any conflicts.
+- Queries during ingest are safe (reads don't block writes in vector databases).
+
+**Note**: For multi-user scenarios in the future, revisit this policy via ADR.
+
+---
+
+## Implementation Milestones
+
+### Milestone: 002-chunk-retrieval (Project-Scoped Citable Chunk Retrieval)
+
+**Feature Branch**: `002-chunk-retrieval`
+
+**Phase 1: Setup (Shared Infrastructure)** — ✅ Complete (2025-01-27)
+- Created project directory structure (`src/infrastructure/config/`, `src/infrastructure/mcp/`)
+- Added dependencies:
+  - MCP SDK (v1.20.0) for Model Context Protocol integration
+  - OpenAI SDK (dev group, v2.6.1) for optional cloud embeddings
+  - Docling: Noted Windows compatibility limitation (requires `deepsearch-glm` without Windows wheels; Windows users may need WSL)
+  - Verified existing: Qdrant client, FastEmbed, Typer, Rich, Pydantic
+- Synced dependencies with `uv sync` (25 packages installed)
+- **Note**: Future dependency additions must use `uv add` commands per Toolchain & Execution Policy
+
+**Status**: Ready for Phase 2 (Foundational layer implementation)
+
+---
+
+**Version**: 1.5.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-01-27
