@@ -54,8 +54,3 @@ dev = [
     "pytest-cov>=7.0.0",
     "ruff>=0.14.2",
 ]
-windows = [
-    # Note: docling>=1.0.0 requires deepsearch-glm which doesn't have Windows wheels
-    # Windows users may need WSL or alternative solutions for docling
-    # For now, docling will be conditionally imported/used
-]
