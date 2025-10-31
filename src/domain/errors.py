@@ -63,3 +63,17 @@ class MetadataMissing(Exception):
         self.hint = hint
         super().__init__(f"Metadata not found for document '{doc_id}': {hint}")
 
+
+class ChunkingError(Exception):
+    """
+    Raised when chunking fails.
+    
+    Attributes:
+        message: Error message
+        reason: Detailed reason for failure (optional)
+    """
+    
+    def __init__(self, message: str, reason: str | None = None) -> None:
+        self.message = message
+        self.reason = reason
+        super().__init__(f"{message}: {reason}" if reason else message)

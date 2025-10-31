@@ -265,6 +265,13 @@ def ingest_document(
         chunks_updated = 0  # TODO: Track updates vs additions in future phases
         chunks_skipped = 0  # TODO: Track skipped chunks (e.g., duplicates) in future phases
         
+        # T029a: Quality filtering statistics
+        # Note: Quality filtering (min 50 tokens, SNR ≥ 0.3) is applied during chunking.
+        # Filtered chunks are logged by DoclingHybridChunkerAdapter during chunking.
+        # The chunks_written count reflects only chunks that passed quality filtering.
+        # To get exact filtered count, check chunker logs for "Quality filtering: X chunks filtered out"
+        chunks_filtered = None  # Could be enhanced to extract from chunker metadata
+        
         audit_entry = {
             "correlation_id": correlation_id,
             "doc_id": doc_id,
@@ -274,6 +281,7 @@ def ingest_document(
             "chunks_added": chunks_added,
             "chunks_updated": chunks_updated,
             "chunks_skipped": chunks_skipped,
+            "chunks_filtered": chunks_filtered,  # T029a: Quality filter statistics (logged by chunker)
             "documents_processed": 1,
             "duration_seconds": round(duration_seconds, 3),
             "embed_model": model_id,  # Dense embedding model

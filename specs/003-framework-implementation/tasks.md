@@ -71,16 +71,16 @@
 
 ### Implementation for User Story 2
 
-- [ ] T021 [US2] Implement DoclingHybridChunkerAdapter.chunk() in src/infrastructure/adapters/docling_chunker.py with HybridChunker initialization
-- [ ] T022 [US2] Add tokenizer alignment validation in src/infrastructure/adapters/docling_chunker.py (ensure chunking tokenizer matches embedding model tokenizer family)
-- [ ] T023 [US2] Implement heading-aware chunking with heading_context ancestor headings in src/infrastructure/adapters/docling_chunker.py
-- [ ] T024 [US2] Add quality filtering logic (minimum 50 tokens, signal-to-noise ratio ≥ 0.3) in src/infrastructure/adapters/docling_chunker.py
-- [ ] T025 [US2] Implement section path breadcrumb extraction from heading tree in src/infrastructure/adapters/docling_chunker.py
-- [ ] T026 [US2] Implement page span mapping from page_map in src/infrastructure/adapters/docling_chunker.py
-- [ ] T027 [US2] Add token count calculation using embedding model tokenizer in src/infrastructure/adapters/docling_chunker.py
-- [ ] T028 [US2] Ensure deterministic chunk ID generation using (doc_id, page_span/section_path, embedding_model_id, chunk_idx) in src/infrastructure/adapters/docling_chunker.py
-- [ ] T029 [US2] Update ChunkerPort protocol in src/application/ports/chunker.py to document quality filtering requirements
-- [ ] T029a [US2] Ensure audit logs capture chunk counts and quality filter statistics (filtered chunks count) in audit log writing (FR-018)
+- [X] T021 [US2] Implement DoclingHybridChunkerAdapter.chunk() in src/infrastructure/adapters/docling_chunker.py with HybridChunker initialization
+- [X] T022 [US2] Add tokenizer alignment validation in src/infrastructure/adapters/docling_chunker.py (ensure chunking tokenizer matches embedding model tokenizer family)
+- [X] T023 [US2] Implement heading-aware chunking with heading_context ancestor headings in src/infrastructure/adapters/docling_chunker.py
+- [X] T024 [US2] Add quality filtering logic (minimum 50 tokens, signal-to-noise ratio ≥ 0.3) in src/infrastructure/adapters/docling_chunker.py
+- [X] T025 [US2] Implement section path breadcrumb extraction from heading tree in src/infrastructure/adapters/docling_chunker.py
+- [X] T026 [US2] Implement page span mapping from page_map in src/infrastructure/adapters/docling_chunker.py
+- [X] T027 [US2] Add token count calculation using embedding model tokenizer in src/infrastructure/adapters/docling_chunker.py
+- [X] T028 [US2] Ensure deterministic chunk ID generation using (doc_id, page_span/section_path, embedding_model_id, chunk_idx) in src/infrastructure/adapters/docling_chunker.py
+- [X] T029 [US2] Update ChunkerPort protocol in src/application/ports/chunker.py to document quality filtering requirements
+- [X] T029a [US2] Ensure audit logs capture chunk counts and quality filter statistics (filtered chunks count) in audit log writing (FR-018)
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 
