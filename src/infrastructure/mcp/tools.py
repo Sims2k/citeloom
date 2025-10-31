@@ -603,15 +603,15 @@ async def handle_tool_call(name: str, arguments: dict[str, Any], settings: Setti
                 message=f"Unknown tool: {name}",
                 details={"tool_name": name},
             )
-        except MCPToolError as e:
-            # Return error as JSON
-            return json.dumps(e.to_json(), indent=2)
-        except Exception as e:
-            logger.error(f"Unexpected error in tool '{name}': {e}", exc_info=True)
-            error = MCPToolError(
-                code="INTERNAL_ERROR",
-                message=f"Internal error: {e}",
-                details={"tool_name": name},
-            )
-            return json.dumps(error.to_json(), indent=2)
+    except MCPToolError as e:
+        # Return error as JSON
+        return json.dumps(e.to_json(), indent=2)
+    except Exception as e:
+        logger.error(f"Unexpected error in tool '{name}': {e}", exc_info=True)
+        error = MCPToolError(
+            code="INTERNAL_ERROR",
+            message=f"Internal error: {e}",
+            details={"tool_name": name},
+        )
+        return json.dumps(error.to_json(), indent=2)
 

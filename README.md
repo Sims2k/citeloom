@@ -15,7 +15,7 @@ is easy to verify and simple to cite.
 - Split into clear, readable snippets with helpful context
 - Attach citation details so you can reference with confidence
 - Keep projects separate to avoid mixing unrelated material
-- Use from the command line and your favorite AI tools
+- Use from the command line and your favorite AI tools (MCP integration for Cursor, Claude Desktop)
 - Search and get concise answers with links back to the source
 
 ## Developer Quickstart
@@ -39,7 +39,23 @@ Branching: trunk-based (`main` only). Use short-lived feature branches if needed
 
 ## CLI
 
-Command reference and examples will go here.
+### Basic Commands
+
+**Ingest documents**:
+```bash
+uv run citeloom ingest --project citeloom/clean-arch ./assets/raw/clean-arch.pdf
+```
+
+**Query chunks**:
+```bash
+uv run citeloom query --project citeloom/clean-arch --q "entities vs value objects" --k 6
+uv run citeloom query --project citeloom/clean-arch --q "dependency inversion" --hybrid --top-k 6
+```
+
+**MCP Server** (for AI editor integration):
+```bash
+uv run citeloom mcp-server
+```
 
 ## Config
 
@@ -68,6 +84,50 @@ url = "http://localhost:6333"
 ### Sample commands
 
 ```bash
+# Ingest documents
 uv run citeloom ingest --project citeloom/clean-arch ./assets/raw/clean-arch.pdf
+
+# Query chunks (semantic search)
 uv run citeloom query --project citeloom/clean-arch --q "entities vs value objects" --k 6
+
+# Query with hybrid search (full-text + vector)
+uv run citeloom query --project citeloom/clean-arch --q "dependency inversion" --hybrid --top-k 6
+
+# Run MCP server for AI editor integration
+uv run citeloom mcp-server
 ```
+
+## MCP Integration
+
+CiteLoom provides MCP (Model Context Protocol) server integration for AI development environments like Cursor and Claude Desktop.
+
+### Setup MCP Server
+
+1. **Configure MCP server** in your editor settings (e.g., Cursor/Claude Desktop):
+
+```json
+{
+  "mcpServers": {
+    "citeloom": {
+      "command": "uv",
+      "args": ["run", "citeloom", "mcp-server"],
+      "env": {
+        "QDRANT_URL": "http://localhost:6333",
+        "CITELOOM_CONFIG": "./citeloom.toml"
+      }
+    }
+  }
+}
+```
+
+2. **Restart your editor** to load the MCP server
+
+### Available MCP Tools
+
+- **`list_projects`**: List all configured projects with metadata
+- **`find_chunks`**: Vector search for chunks in a project (8s timeout)
+- **`query_hybrid`**: Hybrid search combining full-text and vector search (15s timeout)
+- **`inspect_collection`**: Inspect collection metadata and sample payloads (5s timeout)
+- **`store_chunks`**: Batched upsert of chunks (100-500 chunks, 15s timeout)
+
+All tools enforce strict project filtering and return citation-ready metadata with trimmed text output.
