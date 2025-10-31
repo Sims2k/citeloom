@@ -7,13 +7,13 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from application.dto.query import QueryRequest
-from application.use_cases.query_chunks import query_chunks
-from application.ports.embeddings import EmbeddingPort
-from application.ports.vector_index import VectorIndexPort
-from infrastructure.adapters.fastembed_embeddings import FastEmbedAdapter
-from infrastructure.adapters.qdrant_index import QdrantIndexAdapter
-from infrastructure.config.settings import Settings
+from src.application.dto.query import QueryRequest
+from src.application.use_cases.query_chunks import query_chunks
+from src.application.ports.embeddings import EmbeddingPort
+from src.application.ports.vector_index import VectorIndexPort
+from src.infrastructure.adapters.fastembed_embeddings import FastEmbedAdapter
+from src.infrastructure.adapters.qdrant_index import QdrantIndexAdapter
+from src.infrastructure.config.settings import Settings
 
 app = typer.Typer(help="Query chunks from CiteLoom")
 console = Console()

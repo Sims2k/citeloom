@@ -1,7 +1,7 @@
 from typing import Protocol, runtime_checkable, Any
 
-from domain.policy.chunking_policy import ChunkingPolicy
-from domain.models.chunk import Chunk
+from ...domain.policy.chunking_policy import ChunkingPolicy
+from ...domain.models.chunk import Chunk
 
 
 @runtime_checkable

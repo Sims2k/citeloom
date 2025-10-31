@@ -43,7 +43,7 @@ Branching: trunk-based (`main` only). Use short-lived feature branches if needed
 
 **Ingest documents**:
 ```bash
-uv run citeloom ingest --project citeloom/clean-arch ./assets/raw/clean-arch.pdf
+uv run citeloom ingest --project citeloom/clean-arch ./assets/raw/Keen - 2025 - Clean Architecture with Python Implement scalable and maintainable applications using proven archit.pdf
 ```
 
 **Query chunks**:

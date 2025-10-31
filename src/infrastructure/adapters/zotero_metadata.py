@@ -49,7 +49,11 @@ class ZoteroCslJsonResolver:
             return None
         
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            # Try utf-8-sig first to handle BOM, fallback to utf-8
+            try:
+                data = json.loads(path.read_text(encoding="utf-8-sig"))
+            except UnicodeDecodeError:
+                data = json.loads(path.read_text(encoding="utf-8"))
         except Exception as e:
             logger.warning(
                 f"Failed to parse references file: {e}",

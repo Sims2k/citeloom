@@ -3,20 +3,20 @@ import uuid
 import logging
 from pathlib import Path
 
-from application.dto.ingest import IngestRequest
-from application.use_cases.ingest_document import ingest_document
-from application.ports.converter import TextConverterPort
-from application.ports.chunker import ChunkerPort
-from application.ports.metadata_resolver import MetadataResolverPort
-from application.ports.embeddings import EmbeddingPort
-from application.ports.vector_index import VectorIndexPort
-from infrastructure.adapters.docling_converter import DoclingConverterAdapter
-from infrastructure.adapters.docling_chunker import DoclingHybridChunkerAdapter
-from infrastructure.adapters.zotero_metadata import ZoteroCslJsonResolver
-from infrastructure.adapters.fastembed_embeddings import FastEmbedAdapter
-from infrastructure.adapters.qdrant_index import QdrantIndexAdapter
-from infrastructure.config.settings import Settings
-from infrastructure.logging import configure_logging, set_correlation_id
+from src.application.dto.ingest import IngestRequest
+from src.application.use_cases.ingest_document import ingest_document
+from src.application.ports.converter import TextConverterPort
+from src.application.ports.chunker import ChunkerPort
+from src.application.ports.metadata_resolver import MetadataResolverPort
+from src.application.ports.embeddings import EmbeddingPort
+from src.application.ports.vector_index import VectorIndexPort
+from src.infrastructure.adapters.docling_converter import DoclingConverterAdapter
+from src.infrastructure.adapters.docling_chunker import DoclingHybridChunkerAdapter
+from src.infrastructure.adapters.zotero_metadata import ZoteroCslJsonResolver
+from src.infrastructure.adapters.fastembed_embeddings import FastEmbedAdapter
+from src.infrastructure.adapters.qdrant_index import QdrantIndexAdapter
+from src.infrastructure.config.settings import Settings
+from src.infrastructure.logging import configure_logging, set_correlation_id
 
 app = typer.Typer(help="Ingest documents into CiteLoom")
 logger = logging.getLogger(__name__)

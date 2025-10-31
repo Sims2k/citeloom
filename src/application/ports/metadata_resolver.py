@@ -1,6 +1,6 @@
 from typing import Protocol, runtime_checkable
 
-from domain.models.citation_meta import CitationMeta
+from ...domain.models.citation_meta import CitationMeta
 
 
 @runtime_checkable

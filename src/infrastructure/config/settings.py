@@ -91,12 +91,18 @@ class Settings(BaseModel):
         
         # Extract project settings
         projects: dict[str, ProjectSettings] = {}
+        # Handle nested project structure: [project."id"] creates data['project']['id']
+        if "project" in data and isinstance(data["project"], dict):
+            for project_id, project_data in data["project"].items():
+                if isinstance(project_data, dict):
+                    projects[project_id] = ProjectSettings(**project_data)
+        # Handle legacy format or direct "project." keys (for backwards compatibility)
         for key, value in data.items():
             if key.startswith("project.") and isinstance(value, dict):
                 # Extract project ID from key like "project.\"citeloom/clean-arch\""
                 project_id = key.replace("project.", "").strip('"')
                 projects[project_id] = ProjectSettings(**value)
-            elif key == "project" and isinstance(value, dict):
+            elif key == "project" and isinstance(value, dict) and "id" in value:
                 # Handle single project block (legacy format)
                 project_id = value.get("id", "default")
                 projects[project_id] = ProjectSettings(**value)
