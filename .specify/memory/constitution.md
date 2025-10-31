@@ -264,8 +264,23 @@ Operating Procedure (Humans & Agents)
 - Synced dependencies with `uv sync` (25 packages installed)
 - **Note**: Future dependency additions must use `uv add` commands per Toolchain & Execution Policy
 
-**Status**: Ready for Phase 2 (Foundational layer implementation)
+**Phase 2: Foundational (Blocking Prerequisites)** — ✅ Complete (2025-01-27)
+- **Domain Layer**: 
+  - Created `ChunkingPolicy` with `max_tokens`, `overlap_tokens`, `heading_context`, `tokenizer_id`
+  - Created `RetrievalPolicy` with `top_k`, `hybrid_enabled`, `min_score`, `require_project_filter`, `max_chars_per_chunk`
+  - Created domain models: `ConversionResult`, `Chunk`, `CitationMeta` with validation logic
+  - Created domain errors: `EmbeddingModelMismatch`, `ProjectNotFound`, `HybridNotSupported`, `MetadataMissing`
+  - Verified value objects: `ProjectId`, `CiteKey`, `PageSpan`, `SectionPath`
+- **Application Layer**:
+  - Updated all port protocols to match contracts: `TextConverterPort`, `ChunkerPort`, `MetadataResolverPort`, `EmbeddingPort`, `VectorIndexPort`
+  - Enhanced DTOs: `IngestRequest`/`IngestResult`, `QueryRequest`/`QueryResult`/`QueryResultItem` with all required fields
+- **Infrastructure Layer**:
+  - Created `Settings` class with Pydantic models for `citeloom.toml` configuration (ChunkingSettings, QdrantSettings, PathsSettings, ProjectSettings)
+  - Enhanced logging with correlation ID support using `contextvars` for structured logging
+  - Verified Typer CLI app entrypoint exists
+- **Quality**: All code passes ruff linting, follows Clean Architecture principles, proper dataclass patterns with `field(default_factory)` for mutable defaults
+- **Status**: Foundation complete - User story implementation (Phase 3+) can now begin
 
 ---
 
-**Version**: 1.5.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-01-27
+**Version**: 1.5.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-01-27 (Phase 2 completion)
