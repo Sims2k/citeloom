@@ -342,6 +342,63 @@ Operating Procedure (Humans & Agents)
 - **Quality**: All 10 integration tests pass, no linter errors, follows Clean Architecture principles
 - **Status**: User Story 2 complete - Chunks are automatically enriched with citation metadata from Zotero CSL-JSON exports using DOI-first matching with normalized title fallback
 
+**Phase 5: User Story 3 - Query and Retrieve Relevant Chunks** — ✅ Complete (2025-01-27)
+- **Application Layer**:
+  - Implemented `QueryChunks` use case orchestrator:
+    - Project filter enforcement (mandatory per RetrievalPolicy)
+    - Top-k limit enforcement with policy-based caps
+    - Text trimming to max_chars_per_chunk (1800 chars default, configurable)
+    - RetrievalPolicy integration for hybrid_enabled, min_score filtering
+    - Full citation metadata extraction (citekey, page_span, section_path, section_heading, DOI/URL)
+    - Proper error handling for ProjectNotFound and HybridNotSupported exceptions
+  - Hybrid query support with query-time fusion:
+    - Normalized score combination: 0.3 * text_score + 0.7 * vector_score
+    - Policy-driven hybrid_enabled enforcement
+    - Graceful fallback when hybrid not enabled for project
+- **Infrastructure Adapters**:
+  - Enhanced `QdrantIndexAdapter.search()` method:
+    - Proper payload extraction with `with_payload=True` flag
+    - Consistent payload structure: `fulltext`, `doc` (page_span, section_path, etc.), `zotero`, `project`, `embed_model`
+    - In-memory fallback with proper payload structure matching real Qdrant format
+    - Project filtering via Filter with FieldCondition for mandatory project scoping
+  - Implemented `QdrantIndexAdapter.hybrid_query()` method:
+    - Manual fusion implementation for maximum Qdrant client compatibility (works across versions)
+    - Vector search + text matching score combination
+    - Normalized score fusion: 0.3 * normalized_text_score + 0.7 * normalized_vector_score
+    - In-memory fallback with BM25 approximation using term frequency scoring
+    - Proper error handling for HybridNotSupported when full-text index disabled
+  - Enhanced `_create_payload_indexes()` method:
+    - Better logging for full-text index creation status
+    - Handles auto-indexing in newer Qdrant versions gracefully
+    - Ensures `fulltext` field available for BM25 queries when hybrid enabled
+  - In-memory storage improvements:
+    - Proper `doc` payload structure for consistency (matches real Qdrant format)
+    - Payload structure includes: doc_id, page_span, section_heading, section_path, chunk_idx
+- **CLI**:
+  - Implemented comprehensive `query` command with all required options:
+    - `--project`, `--query` (required)
+    - `--top-k` (default: 6, configurable)
+    - `--hybrid` (flag to enable hybrid search)
+    - `--filters` (JSON format for additional Qdrant filters)
+  - Settings integration:
+    - Loads project configuration from `citeloom.toml`
+    - Respects project-level `hybrid_enabled` setting
+    - Uses Qdrant URL and fulltext index settings from config
+  - Rich table formatting with citation-ready output:
+    - Table view: Score | Citation | Pages | Section | Text Preview
+    - Detailed view: Full citation info, page spans (pp. x–y), section paths, DOI/URL
+    - Proper "(citekey, pp. x–y, section)" format as specified in requirements
+  - Error handling with user-friendly messages for missing projects, invalid filters, etc.
+- **Tests**:
+  - Created comprehensive integration test suite (`tests/integration/test_query_hybrid.py`):
+    - Tests both dense-only and hybrid search modes independently
+    - Validates proper payload structure and extraction
+    - Verifies score correctness (scores >= 0.0)
+    - Validates content relevance (query terms appear in results)
+    - Proper chunk structure with embeddings for realistic testing
+- **Quality**: All code passes linting (ruff, no errors), Clean Architecture compliance maintained, proper error handling throughout, type hints and documentation complete
+- **Status**: User Story 3 complete - Full query and retrieval capability with semantic and hybrid search, project filtering, and citation-ready output formatting
+
 ---
 
-**Version**: 1.6.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-01-27 (Phase 4 completion - Citation metadata enrichment)
+**Version**: 1.7.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-01-27 (Phase 5 completion - Query and Retrieve Relevant Chunks)
