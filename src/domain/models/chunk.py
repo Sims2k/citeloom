@@ -1,4 +1,52 @@
+import hashlib
 from dataclasses import dataclass, field
+
+
+def generate_chunk_id(
+    doc_id: str,
+    page_span: tuple[int, int],
+    section_path: list[str],
+    embedding_model_id: str,
+    chunk_idx: int,
+) -> str:
+    """
+    Generate deterministic chunk ID from chunk attributes.
+    
+    The ID is derived from:
+    - doc_id: Source document identifier
+    - page_span or section_path: Location within document
+    - embedding_model_id: Embedding model used (for versioning)
+    - chunk_idx: Sequential chunk index within document
+    
+    Args:
+        doc_id: Source document identifier
+        page_span: Page span (start_page, end_page)
+        section_path: Hierarchical section path (breadcrumb)
+        embedding_model_id: Embedding model identifier
+        chunk_idx: Sequential chunk index
+    
+    Returns:
+        Deterministic chunk ID (SHA256 hash hex digest, truncated to 16 chars)
+    """
+    # Use section_path if available, otherwise use page_span
+    location_key: str
+    if section_path:
+        location_key = "|".join(section_path)
+    else:
+        location_key = f"p{page_span[0]}-{page_span[1]}"
+    
+    # Create deterministic string representation
+    components = [
+        doc_id,
+        location_key,
+        embedding_model_id,
+        str(chunk_idx),
+    ]
+    id_string = ":".join(components)
+    
+    # Generate SHA256 hash and truncate to 16 characters for readability
+    hash_obj = hashlib.sha256(id_string.encode("utf-8"))
+    return hash_obj.hexdigest()[:16]
 
 
 @dataclass(frozen=True)
