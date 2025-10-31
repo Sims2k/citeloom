@@ -149,7 +149,28 @@ uv run citeloom query run --project citeloom/clean-arch \
 
 ## Step 7: Set Up MCP Integration (Optional)
 
-For AI editor integration (Cursor, Claude Desktop), add to your MCP configuration:
+CiteLoom uses FastMCP for Model Context Protocol (MCP) server integration with AI editors like Cursor and Claude Desktop.
+
+### FastMCP Configuration
+
+CiteLoom includes a `fastmcp.json` configuration file at the project root:
+
+```json
+{
+  "dependencies": ["python-dotenv"],
+  "transport": "stdio",
+  "entrypoint": "src.infrastructure.mcp.server:create_mcp_server"
+}
+```
+
+This declarative configuration enables:
+- Automatic dependency management with `uv`
+- STDIO transport for editor integration
+- Consistent deployment across environments
+
+### Editor Configuration
+
+**For Cursor or Claude Desktop**, add to your MCP settings:
 
 ```json
 {
@@ -158,12 +179,27 @@ For AI editor integration (Cursor, Claude Desktop), add to your MCP configuratio
       "command": "uv",
       "args": ["run", "citeloom", "mcp-server"],
       "env": {
-        "CITELOOM_CONFIG": "./citeloom.toml"
+        "CITELOOM_CONFIG": "./citeloom.toml",
+        "QDRANT_URL": "http://localhost:6333"
       }
     }
   }
 }
 ```
+
+**Available MCP Tools:**
+
+- `list_projects`: List all configured projects (no timeout, fast enumeration)
+- `ingest_from_source`: Ingest documents from files or Zotero (15s timeout)
+- `query`: Dense-only vector search (8s timeout)
+- `query_hybrid`: Hybrid search with RRF fusion (15s timeout)
+- `inspect_collection`: Inspect collection stats and model bindings (5s timeout)
+
+All tools include:
+- Project filtering (server-side enforcement)
+- Correlation IDs for tracing
+- Bounded outputs (text trimmed to 1,800 chars)
+- Standardized error codes
 
 ## Troubleshooting
 
@@ -207,9 +243,20 @@ If you see warnings about "in-memory fallback":
 2. Add entries to `references/clean-arch.json` (CSL-JSON format from Zotero)
 3. Include DOI, citekey, or matching title for automatic resolution
 
+## Environment Configuration
+
+For detailed environment variable configuration including Zotero setup, see [Environment Configuration Guide](environment-config.md).
+
+Key points:
+- Create `.env` file in project root for API keys
+- Environment variables take precedence over `.env` file
+- Zotero can be configured for remote or local access
+- Better BibTeX integration is automatic when available
+
 ## Next Steps
 
-- Review [Configuration Guide](quickstart.md) for advanced settings
+- Review [Environment Configuration Guide](environment-config.md) for API keys and Zotero setup
+- Review [Quickstart Guide](../specs/003-framework-implementation/quickstart.md) for advanced settings
 - Explore [MCP Integration](../README.md#mcp-integration) for editor workflows
 - Check [Architecture Documentation](../.specify/memory/constitution.md) for design details
 

@@ -273,10 +273,36 @@ def ingest_document(
         # To get exact filtered count, check chunker logs for "Quality filtering: X chunks filtered out"
         chunks_filtered = None  # Could be enhanced to extract from chunker metadata
         
+        # T102: Enhance audit logging to include dense_model and sparse_model IDs
         # T039a: Capture model IDs (dense and sparse) in audit log
-        # Note: sparse_model_id is not yet available in IngestRequest, but will be added when
-        # project configuration includes sparse_model setting. For now, it's optional.
-        sparse_model_id = None  # TODO: Get from project configuration when available
+        # Get sparse_model_id from collection metadata if available
+        sparse_model_id = None
+        try:
+            # Try to get sparse_model_id from collection metadata
+            # This is stored when collection is created with hybrid search enabled
+            if hasattr(index, '_client') and index._client is not None:
+                collection_name = f"proj-{request.project_id.replace('/', '-')}"
+                try:
+                    collection_info = index._client.get_collection(collection_name)
+                    # Access metadata - structure varies by Qdrant version
+                    metadata = {}
+                    if hasattr(collection_info, 'config'):
+                        if hasattr(collection_info.config, 'params'):
+                            if hasattr(collection_info.config.params, 'metadata'):
+                                metadata = collection_info.config.params.metadata or {}
+                    elif hasattr(collection_info, 'metadata'):
+                        metadata = collection_info.metadata or {}
+                    
+                    sparse_model_id = metadata.get("sparse_model_id")
+                except Exception as e:
+                    logger.debug(
+                        f"Could not retrieve sparse_model_id from collection metadata: {e}",
+                        extra={"collection_name": collection_name},
+                    )
+        except Exception as e:
+            logger.debug(f"Error accessing collection metadata for sparse_model_id: {e}")
+        
+        # T102: dense_model is already captured as model_id, ensure it's included in audit log
         
         audit_entry = {
             "correlation_id": correlation_id,
@@ -290,8 +316,8 @@ def ingest_document(
             "chunks_filtered": chunks_filtered,  # T029a: Quality filter statistics (logged by chunker)
             "documents_processed": 1,
             "duration_seconds": round(duration_seconds, 3),
-            "dense_model": model_id,  # T039a: Dense embedding model ID
-            "sparse_model": sparse_model_id,  # T039a: Sparse model ID (optional, for hybrid search)
+            "dense_model": model_id,  # T039a, T102: Dense embedding model ID
+            "sparse_model": sparse_model_id,  # T039a, T102: Sparse model ID (optional, for hybrid search)
             "warnings": warnings,
             "errors": upsert_errors,  # T039a: Errors encountered during upsert operations
             "timestamp": time.time(),

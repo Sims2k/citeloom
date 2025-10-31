@@ -135,7 +135,11 @@ class DoclingConverterAdapter:
     
     def _timeout_handler(self, signum: int, frame: Any) -> None:
         """Signal handler for timeout enforcement."""
-        raise TimeoutError(f"Document conversion exceeded {self.DOCUMENT_TIMEOUT_SECONDS}s timeout")
+        # T103: Enhanced diagnostic information in timeout handler
+        raise TimeoutError(
+            f"Document conversion exceeded {self.DOCUMENT_TIMEOUT_SECONDS}s timeout. "
+            f"Page timeout limit: {self.PAGE_TIMEOUT_SECONDS}s per page."
+        )
     
     def _convert_with_timeout(self, source_path: str) -> Any:
         """
@@ -166,17 +170,33 @@ class DoclingConverterAdapter:
             
             return result
         except TimeoutError:
+            # T103: Enhanced diagnostic logging for timeout failures at conversion level
             logger.error(
                 f"Document conversion timeout after {self.DOCUMENT_TIMEOUT_SECONDS}s: {source_path}",
-                extra={"source_path": source_path, "timeout_seconds": self.DOCUMENT_TIMEOUT_SECONDS},
+                extra={
+                    "source_path": source_path,
+                    "timeout_seconds": self.DOCUMENT_TIMEOUT_SECONDS,
+                    "page_timeout_seconds": self.PAGE_TIMEOUT_SECONDS,
+                    "diagnostic": "Document-level timeout occurred. This may indicate: "
+                                  "1. Document is extremely large (>1000 pages), "
+                                  "2. Complex document structure requiring extensive processing, "
+                                  "3. Resource constraints (CPU/memory). "
+                                  "Consider splitting document or increasing timeout if system allows.",
+                },
             )
             raise
         except Exception as e:
             if sys.platform != "win32":
                 signal.alarm(0)  # Cancel alarm on error
+            # T103: Enhanced diagnostic logging for conversion failures
             logger.error(
-                f"Document conversion failed: {e}",
-                extra={"source_path": source_path},
+                f"Document conversion failed during processing: {e}",
+                extra={
+                    "source_path": source_path,
+                    "timeout_seconds": self.DOCUMENT_TIMEOUT_SECONDS,
+                    "diagnostic": "Conversion error occurred during document processing. "
+                                  "Check document format, corruption, or system resources.",
+                },
                 exc_info=True,
             )
             raise
@@ -223,8 +243,14 @@ class DoclingConverterAdapter:
             
             logger.debug(f"Extracted page map with {len(page_map)} pages")
         except Exception as e:
+            # T103: Enhanced diagnostic logging for page map extraction failures
             logger.warning(
                 f"Failed to extract page map: {e}, using fallback",
+                extra={
+                    "diagnostic": "Page map extraction failed. Fallback mapping used. "
+                                  "This may affect precise page references in citations. "
+                                  "Check document structure if precision is critical.",
+                },
                 exc_info=True,
             )
             # Fallback: single page
@@ -576,9 +602,17 @@ class DoclingConverterAdapter:
             # Detect image-only pages
             image_only_pages = self._detect_image_only_pages(doc)
             if image_only_pages:
+                # T103: Enhanced diagnostic logging for image-only pages
                 logger.info(
                     f"Detected {len(image_only_pages)} image-only pages: {image_only_pages}",
-                    extra={"source_path": source_path, "image_only_pages": image_only_pages},
+                    extra={
+                        "source_path": source_path,
+                        "image_only_pages": image_only_pages,
+                        "page_count": len(page_map),
+                        "diagnostic": f"Pages {image_only_pages} contain only images. "
+                                     f"OCR may be required for these pages. "
+                                     f"Verify OCR languages ({selected_languages}) are appropriate.",
+                    },
                 )
             
             # Build result
@@ -608,13 +642,36 @@ class DoclingConverterAdapter:
             
             return result
         
-        except TimeoutError:
-            # Re-raise timeout errors with context
+        except TimeoutError as e:
+            # T103: Enhanced diagnostic logging for timeout failures
+            logger.error(
+                f"Document conversion timed out: {e}",
+                extra={
+                    "source_path": source_path,
+                    "doc_id": doc_id,
+                    "timeout_seconds": self.DOCUMENT_TIMEOUT_SECONDS,
+                    "page_timeout_seconds": self.PAGE_TIMEOUT_SECONDS,
+                    "diagnostic": "Document exceeded timeout limits. Consider: "
+                                  "1. Splitting large documents into smaller files, "
+                                  "2. Increasing timeout limits if system resources allow, "
+                                  "3. Checking for corrupted or unusually complex document structure",
+                },
+                exc_info=True,
+            )
             raise
         except Exception as e:
+            # T103: Enhanced diagnostic logging for general conversion failures
             logger.error(
                 f"Document conversion failed: {e}",
-                extra={"source_path": source_path, "doc_id": doc_id},
+                extra={
+                    "source_path": source_path,
+                    "doc_id": doc_id,
+                    "ocr_languages": selected_languages if 'selected_languages' in locals() else None,
+                    "diagnostic": "Conversion error occurred. Check: "
+                                  "1. Document format is supported (PDF, DOCX, PPTX, HTML, images), "
+                                  "2. File is not corrupted, "
+                                  "3. OCR languages are correct if document is scanned",
+                },
                 exc_info=True,
             )
             raise

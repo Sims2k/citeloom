@@ -226,15 +226,15 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T097 [P] Add comprehensive integration tests for Docling conversion in tests/integration/test_docling_conversion.py
-- [ ] T098 [P] Add comprehensive integration tests for Qdrant named vectors and model binding in tests/integration/test_qdrant_named_vectors.py
-- [ ] T099 [P] Add comprehensive integration tests for FastMCP tools in tests/integration/test_fastmcp_tools.py
-- [ ] T100 [P] Add integration tests for pyzotero metadata resolution and Better BibTeX citekey extraction in tests/integration/test_zotero_metadata.py
-- [ ] T101 [P] Add unit tests for environment variable loading in tests/unit/test_environment_loader.py
-- [ ] T102 [P] Enhance audit logging to include dense_model and sparse_model IDs in existing audit log implementation (complements T020a, T029a, T039a)
-- [ ] T103 Add diagnostic logging improvements for timeout/page failures in src/infrastructure/adapters/docling_converter.py
-- [ ] T104 [P] Update documentation with FastMCP configuration examples in docs/
-- [ ] T105 [P] Update documentation with environment variable configuration guide including Zotero setup in docs/
+- [X] T097 [P] Add comprehensive integration tests for Docling conversion in tests/integration/test_docling_conversion.py
+- [X] T098 [P] Add comprehensive integration tests for Qdrant named vectors and model binding in tests/integration/test_qdrant_named_vectors.py
+- [X] T099 [P] Add comprehensive integration tests for FastMCP tools in tests/integration/test_fastmcp_tools.py
+- [X] T100 [P] Add integration tests for pyzotero metadata resolution and Better BibTeX citekey extraction in tests/integration/test_zotero_metadata.py
+- [X] T101 [P] Add unit tests for environment variable loading in tests/unit/test_environment_loader.py
+- [X] T102 [P] Enhance audit logging to include dense_model and sparse_model IDs in existing audit log implementation (complements T020a, T029a, T039a)
+- [X] T103 Add diagnostic logging improvements for timeout/page failures in src/infrastructure/adapters/docling_converter.py
+- [X] T104 [P] Update documentation with FastMCP configuration examples in docs/
+- [X] T105 [P] Update documentation with environment variable configuration guide including Zotero setup in docs/
 - [ ] T106 Code cleanup and refactoring across all adapters
 - [ ] T107 Run quickstart.md validation scenarios
 
