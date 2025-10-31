@@ -3,18 +3,27 @@ Weave long-form sources into small, citable context for your AI work.
 
 <!--
 Sync Impact Report
-- Version change: 1.4.0 → 1.5.0
+- Version change: 1.9.0 → 1.11.0
 - Modified principles/sections:
-  - MCP Integration Patterns → added resilience patterns (exponential backoff, error taxonomy completeness)
-  - Vector Database Patterns → added resume capability for long-running batch operations
+  - Performance & Hybrid Retrieval → updated to Qdrant named vectors with model binding and RRF fusion
+  - Vector Database Patterns → added Named Vectors & Model Binding, Storage Optimization sections
+  - Document Processing Patterns → added Docling Conversion section with OCR language integration, quality filtering thresholds
+  - MCP Integration Patterns → updated to FastMCP server configuration with fastmcp.json declarative config
 - Added sections:
-  - None (enhanced existing sections)
+  - Named Vectors & Model Binding (under Vector Database Patterns)
+  - Storage Optimization (under Vector Database Patterns)
+  - Docling Conversion (under Document Processing Patterns)
+  - FastMCP Server Configuration (under MCP Integration Patterns)
 - Removed sections:
   - None
 - Templates requiring updates:
   - None (all templates remain compatible)
 - Deferred TODOs:
   - TODO(RATIFICATION_DATE): Original adoption date unknown; set once confirmed
+- Planning Complete:
+  - Milestone 003-framework-implementation planning phase complete (2025-10-31)
+  - Generated: plan.md, research.md, data-model.md, contracts/, quickstart.md, tasks.md
+  - Ready for implementation with 89 tasks organized by 8 user stories
 -->
 
 ## Core Principles
@@ -93,14 +102,16 @@ Testing
 - Coverage: Domain 100% preferred (≥90% minimum); overall target ≥80%
 
 Performance & Hybrid Retrieval
-- **Query-time hybrid retrieval** (authoritative): Implement hybrid search using query-time fusion of full-text (BM25) and vector search, without storing separate sparse vectors. This is the recommended approach for modern vector databases (2024-2025 best practice).
-  - Full-text index on `fulltext` payload field in Qdrant
-  - Combine BM25 and vector similarity scores at query time (e.g., weighted fusion: 0.3 * BM25 + 0.7 * vector)
-  - Document fusion policy in ADR when implemented
-- **Ingest-time sparse vectors** (alternative): Not recommended initially; requires additional storage overhead and separate sparse index management. May be considered later via ADR if query-time hybrid proves insufficient.
+- **Qdrant named vectors with model binding** (authoritative): Use Qdrant named vector schema with model binding via `set_model()` and `set_sparse_model()` for hybrid search. This enables automatic RRF (Reciprocal Rank Fusion) between dense and sparse vectors without manual score combination. Recommended approach for modern vector databases (2024-2025 best practice).
+  - Create per-project collections with two named vectors: `dense` (FastEmbed model, e.g., `BAAI/bge-small-en-v1.5`) and `sparse` (BM25/SPLADE/miniCOIL)
+  - Model binding enables text-based queries without manual embedding
+  - RRF fusion is automatic when both vectors are bound, providing robust retrieval on technical texts
+  - Default sparse model: `Qdrant/bm25` for classic lexical search; optional: `prithivida/Splade_PP_en_v1` (neural sparse), `Qdrant/miniCOIL` (BM25-like with semantics)
+- **Manual fusion** (legacy): Query-time hybrid using manual score combination (0.3 * text_score + 0.7 * vector_score) is still supported for compatibility but named vectors with RRF are preferred.
+- **Ingest-time sparse vectors** (alternative): Not recommended initially; requires additional storage overhead and separate sparse index management. May be considered later via ADR if named vectors prove insufficient.
 - Performance smoke tests are provided and SKIPPED by default. To enable locally or in perf CI, set environment variable `CITELOOM_RUN_PERF=1`.
-- Perf targets: ingest ≤ 2 minutes for two 50+ page PDFs; query top-6 ≤ 1s for projects with ≤10,000 chunks; hybrid query ≤ 1.5s.
-- **Large document support**: System must handle documents up to 1000+ pages that exceed LLM context windows, requiring effective chunking with overlap to preserve context across boundaries.
+- Perf targets: ingest ≤ 2 minutes for two 50+ page PDFs with 120s document timeout, 10s per-page timeout; query top-6 ≤ 1s for projects with ≤10,000 chunks; hybrid query ≤ 3s (with RRF fusion).
+- **Large document support**: System must handle documents up to 1000+ pages that exceed LLM context windows, requiring effective chunking with overlap to preserve context across boundaries. Enable on-disk vectors and HNSW for large projects to optimize memory usage.
 
 CI/CD Gates (defaults)
 ```bash
@@ -135,7 +146,14 @@ Operational Clarifications
 - Runtime entrypoints: CLI (primary). MCP server for AI editor integration (Cursor, Claude Desktop). Future: HTTP API/workers/library via adapters as needed.
 - **Data & state**: Qdrant vector database (per-project collections), local filesystem (CSL-JSON reference files, audit logs). No traditional relational database required.
 - **Data retention**: No automatic deletion policies. Manual deletion commands required for data lifecycle management. Users retain full control.
-- Security & privacy: Initial posture: single-user local system (no authentication for CLI), optional authentication for MCP tools. Avoid logging PII; use least-privilege by default. Never log API keys or secrets. Formal authN/Z and secrets management via environment variables only.
+- **Security & privacy**: Initial posture: single-user local system (no authentication for CLI), optional authentication for MCP tools. Avoid logging PII; use least-privilege by default. Never log API keys or secrets. **Environment-based secrets management** (authoritative):
+  - Load environment variables from `.env` file in project root using environment variable loading capabilities (e.g., python-dotenv via uv dependency management)
+  - API keys and sensitive configuration (e.g., `OPENAI_API_KEY`, `QDRANT_API_KEY`) MUST be stored in `.env` files, never in version-controlled `citeloom.toml`
+  - `.env` files MUST be excluded from version control (via `.gitignore`)
+  - Environment variable precedence: Explicitly set system/shell environment variables override `.env` file values (allows per-session overrides)
+  - Optional API keys (e.g., OpenAI embeddings when FastEmbed is default) MUST gracefully degrade when missing: system falls back to default behavior without failing
+  - Required API keys (e.g., Qdrant API key when authentication is required) MUST provide clear error messages indicating which environment variable is missing and how to configure it
+  - Configuration keys that may be sourced from environment: `OPENAI_API_KEY` (optional, for OpenAI embeddings), `QDRANT_API_KEY` (optional, for authenticated Qdrant), `CITELOOM_CONFIG` (optional, for custom config path)
 - **Concurrent operations**: Optimistic concurrency with last-write-wins semantics. Deterministic chunk IDs ensure idempotent deduplication. No pessimistic locking required for single-user local system.
 
 ## Governance
@@ -165,6 +183,7 @@ Toolchain & Execution Policy (Authoritative)
 - Forbidden: `pip install`, manual venv activation, invoking tools outside `uv run/uvx`.
 - pyproject edits: Do not hand-edit dependency tables; use uv commands. Hand edits allowed only for project metadata and tool configs (ruff, mypy, etc.).
 - Virtualenv: project-local `.venv/` managed by uv (keep uncommitted).
+- **Environment variable management**: Load environment variables from `.env` file in project root (managed via python-dotenv or equivalent, added via `uv add python-dotenv`). `.env` file must be in `.gitignore` and never committed. System automatically loads `.env` on startup; explicitly set environment variables take precedence over `.env` values.
 
 Policy Enforcement Signals (CI)
 - Fail if `pip install` appears in code/scripts (exclude docs): grep guard.
@@ -187,10 +206,23 @@ Operating Procedure (Humans & Agents)
 - Enforce **strict project filtering** in all retrieval operations (mandatory `project` filter at adapter level).
 - Store `embed_model` in collection metadata; use for write-guard validation.
 
+**Named Vectors & Model Binding**
+- **Named vector schema**: Create collections with two named vectors: `dense` (dense embeddings) and `sparse` (sparse/lexical embeddings).
+- **Model binding**: Use Qdrant client `set_model()` to bind dense embedding model (e.g., FastEmbed `BAAI/bge-small-en-v1.5`) and `set_sparse_model()` to bind sparse model (BM25/SPLADE/miniCOIL).
+- Model binding enables text-based queries without manual embedding generation; Qdrant handles embedding automatically.
+- **RRF fusion**: When both dense and sparse models are bound, Qdrant automatically fuses results using Reciprocal Rank Fusion (RRF), providing robust hybrid retrieval.
+- **Sparse model selection**: Per-project configuration allows choosing sparse model: `Qdrant/bm25` (classic lexical), `prithivida/Splade_PP_en_v1` (neural sparse), `Qdrant/miniCOIL` (BM25-like with semantics).
+
 **Embedding Model Consistency**
 - **Write-guard policy**: Block upserts if `embed_model` doesn't match collection's stored model (unless migration flag is explicitly set).
 - Validate tokenizer family matches embedding model family before chunking (tokenizer-embedding alignment is a first-class policy requirement).
 - Migration path: Use `--force-rebuild` flag or create new collection suffix (e.g., `-v2`) for model changes.
+
+**Storage Optimization**
+- **On-disk vectors**: Enable `vectors.on_disk: true` for large projects to reduce RAM usage (trades some cold-query latency for memory efficiency).
+- **On-disk HNSW**: Enable HNSW on-disk when vectors are on-disk for consistent memory optimization.
+- **On-disk payload & indices**: Optional for very large metadata sets to further reduce memory usage.
+- **Scalar quantization**: Consider int8 quantization with memmap for throughput-critical scenarios while maintaining acceptable recall.
 
 **Idempotency & Deterministic IDs**
 - Generate deterministic chunk IDs from: `(doc_id, page_span/section_path, embedding_model_id, chunk_idx)`.
@@ -199,31 +231,55 @@ Operating Procedure (Humans & Agents)
 - **Resume capability**: For long-running batch operations (reindex with document count limits), implement state tracking/checkpointing to enable resume of partial operations. State must be recoverable and safe for interruption.
 
 **Payload Schema (Stable)**
-- Required fields: `project`, `source` (path/title/doi/url), `zotero` (citekey/tags/collections), `doc` (page_span/section/section_path/chunk_idx), `embed_model`, `version`.
-- Optional: `fulltext` (required if query-time hybrid enabled for BM25 indexing).
-- Indexes: Keyword on `project` and `zotero.tags`, full-text on `fulltext` (if hybrid enabled).
+- Required fields: `project_id`, `doc_id`, `section_path`, `page_start`, `page_end`, `citekey`, `doi`, `year`, `authors[]`, `title`, `tags[]`, `source_path`, `chunk_text`, `heading_chain`, `embed_model`, `version`.
+- Legacy compatibility: Also supports `project`, `source`, `zotero`, `doc` structure for backward compatibility.
+- Indexes: Keyword on `project_id`, `doc_id`, `citekey`, `year`, `tags`; full-text on `chunk_text` (if hybrid enabled).
 
 ## Document Processing Patterns
 
+**Docling Conversion**
+- **Docling v2 DocumentConverter**: Use Docling v2 for document conversion with OCR support, heading tree extraction, and page mapping.
+- **OCR configuration**: Enable OCR (Tesseract/RapidOCR) for scanned documents. Language selection priority: Zotero metadata `language` field → explicit configuration → default ['en', 'de'].
+- **Timeout limits**: 120 seconds per document, 10 seconds per page (allows complex documents to process while preventing runaway operations).
+- **Windows support**: Docling not tested on Windows; provide WSL/Docker path documentation and surface precise error messages with remediation guidance.
+- **Structure extraction**: Extract reliable page maps (page number → character span) and heading tree hierarchies with page anchors.
+
 **Chunking Strategy**
+- **HybridChunker**: Use Docling's HybridChunker with tokenizer-aligned configuration for heading-aware segmentation.
 - **Heading-aware segmentation**: Preserve document structure (heading hierarchy, page numbers, sections) in chunks.
 - **Tokenizer alignment**: Chunking tokenizer MUST match embedding model tokenizer family (e.g., MiniLM tokenizer for MiniLM embeddings). Enforced via policy validation.
 - **Default policy**: `max_tokens=450`, `overlap_tokens=60`, `heading_context=1-2` ancestor headings included.
+- **Quality filtering**: Filter out chunks below minimum length (50 tokens) or signal-to-noise ratio (< 0.3). Chunks below threshold are filtered with appropriate logging.
+- **Serialization**: Use `contextualize()` to include `heading_chain` + figure/table captions near chunks while keeping body text focused.
 - **Large document support**: Handle documents up to 1000+ pages with effective overlap to preserve context across chunk boundaries.
 
 **Citation Metadata Integration**
 - **Zotero CSL-JSON**: Per-project CSL-JSON files (Better BibTeX auto-export, "Keep updated").
+- **Language field extraction**: Extract `language` field from Zotero metadata and use for OCR language selection during document conversion.
 - **Matching order**: DOI-first (most reliable), then normalized title (fuzzy threshold), then `source_hint`.
 - **Non-blocking**: If metadata cannot be matched, log `MetadataMissing` warning and proceed with ingest. Chunks remain usable without full metadata.
+- **Metadata acquisition**: Prefer Zotero Web API (`format=json`) for live metadata; use BBT auto-export path for stable citekeys. Never read `zotero.sqlite` while Zotero is open (lock/corruption risk).
 
 ## MCP Integration Patterns
+
+**FastMCP Server Configuration**
+- **Declarative configuration**: Use FastMCP with `fastmcp.json` as single source of truth (dependencies, transport, entrypoint). FastMCP 2.12+ uses this as canonical configuration.
+- **Transport**: STDIO for Cursor/Claude Desktop integration (HTTP/SSE variants optional for future).
+- **Environment integration**: Enable `fastmcp run` with uv environment pre-builds for consistent deployment.
+- **Tool surface**: Expose `ingest_from_source`, `query`, `query_hybrid`, `inspect`, `list_projects` with standardized contracts.
 
 **Tool Design**
 - **Time-bounded operations**: Per-tool timeouts (8-15 seconds depending on operation complexity).
 - **Project scoping**: All tools enforce strict project filtering. No cross-project data leakage.
-- **Output shaping**: Always return trimmed `render_text` (≤max_chars_per_chunk policy) plus citation-ready metadata. Never dump full text by default.
+- **Output shaping**: Always return trimmed `render_text` (≤max_chars_per_chunk policy, default 1,800 characters) plus citation-ready metadata. Never dump full text by default.
 - **Error taxonomy**: Standardized error codes: `INVALID_PROJECT`, `EMBEDDING_MISMATCH`, `HYBRID_NOT_SUPPORTED`, `INDEX_UNAVAILABLE`, `TIMEOUT`.
 - **Batch limits**: `store_chunks` accepts 100-500 chunks per batch.
+- **Correlation IDs**: Include correlation IDs in responses for observability and tracing.
+
+**Hybrid Retrieval Tools**
+- **query_hybrid**: Requires both dense and sparse models bound via `set_model()` and `set_sparse_model()` for RRF fusion.
+- **query**: Dense-only vector search (works with named vector `dense`).
+- **Sparse model selection**: Per-project configuration allows choosing sparse model (BM25/SPLADE/miniCOIL).
 
 **Resiliency**
 - Per-tool timeouts with clear timeout errors.
@@ -249,6 +305,24 @@ Operating Procedure (Humans & Agents)
 ---
 
 ## Implementation Milestones
+
+### Milestone: 003-framework-implementation (Production-Ready Document Retrieval System)
+
+**Feature Branch**: `003-framework-implementation`
+
+**Planning Phase** — ✅ Complete (2025-10-31)
+- Created comprehensive implementation plan (plan.md) with technical context and constitution check
+- Generated research document (research.md) with 9 research areas covering Qdrant named vectors, Docling v2, FastMCP, Zotero language integration, environment variables, storage optimization, hybrid retrieval, and production readiness patterns
+- Created data model document (data-model.md) with enhanced domain entities, value objects, and Qdrant payload schema
+- Generated port contracts (contracts/ports.md) and FastMCP tool contracts (contracts/fastmcp-tools.md)
+- Created quickstart guide (quickstart.md) with implementation checklist and common patterns
+- Generated actionable tasks.md with 89 tasks organized by 8 user stories (P1: US1-US3, P2: US4-US6, P3: US7-US8)
+- Updated constitution to version 1.11.0 with framework-specific patterns (named vectors, model binding, OCR language integration, FastMCP configuration)
+- Ready for implementation: All design artifacts complete, tasks organized for independent story implementation
+
+**Status**: Planning complete - Implementation phase ready to begin
+
+---
 
 ### Milestone: 002-chunk-retrieval (Project-Scoped Citable Chunk Retrieval)
 
@@ -447,4 +521,4 @@ Operating Procedure (Humans & Agents)
 
 ---
 
-**Version**: 1.8.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-01-27 (Phase 6 completion - Access Chunks via MCP Tools)
+**Version**: 1.11.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-10-31 (Milestone M3 planning complete: Qdrant named vectors with model binding, Docling v2 completion, FastMCP configuration, OCR language integration, tasks.md generated - Framework Implementation Milestone M3)
