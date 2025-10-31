@@ -18,6 +18,44 @@ is easy to verify and simple to cite.
 - Use from the command line and your favorite AI tools (MCP integration for Cursor, Claude Desktop)
 - Search and get concise answers with links back to the source
 
+## Quick Setup
+
+### 1. Install Dependencies
+
+```bash
+# Project setup
+uv sync
+```
+
+### 2. Start Qdrant Vector Database
+
+```bash
+# Option A: Local Docker (recommended)
+docker run -d --name qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant
+
+# Option B: Qdrant Cloud (production)
+# Sign up at https://cloud.qdrant.io/ and configure in citeloom.toml
+```
+
+### 3. Configure Project
+
+Create `citeloom.toml` (see [Config](#config) section below).
+
+### 4. Ingest Documents
+
+```bash
+# Process all documents in assets/raw
+uv run citeloom ingest run --project citeloom/clean-arch
+```
+
+### 5. Query Chunks
+
+```bash
+uv run citeloom query run --project citeloom/clean-arch --query "your query" --top-k 6
+```
+
+**Full setup guide:** See [docs/setup-guide.md](docs/setup-guide.md) for detailed instructions.
+
 ## Developer Quickstart
 
 ```bash
@@ -64,13 +102,6 @@ uv run citeloom query run --project citeloom/clean-arch --query "dependency inve
 uv run citeloom mcp-server
 ```
 
-## Requirements
-
-- **Qdrant**: Vector database for storing and querying chunks
-  - Local: Run `docker run -p 6333:6333 qdrant/qdrant` or use Docker Compose
-  - Cloud: Use Qdrant Cloud with API key
-  - Without Qdrant: In-memory fallback works for ingestion but data doesn't persist between commands
-
 See also: [Naming alternatives](docs/branding/naming-alternatives.md)
 
 ### Minimal `citeloom.toml`
@@ -93,21 +124,7 @@ api_key = ""  # Only if using Qdrant Cloud
 create_fulltext_index = true  # Required for hybrid search
 ```
 
-### Starting Qdrant (Local)
-
-For local development, start Qdrant using Docker:
-
-```bash
-docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant
-```
-
-Or with Docker Compose (if you have a `docker-compose.yml`):
-
-```bash
-docker-compose up -d qdrant
-```
-
-**Note**: Without Qdrant running, CiteLoom uses an in-memory fallback. Data ingested will not persist between command runs.
+**Note**: Qdrant is required for persistent storage. Without it, CiteLoom uses an in-memory fallback that doesn't persist data between commands.
 ```
 
 ### Sample commands
