@@ -28,7 +28,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# Import ChunkingError from domain errors
 from ...domain.errors import ChunkingError
 
 

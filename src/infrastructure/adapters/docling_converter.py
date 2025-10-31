@@ -31,7 +31,6 @@ logger = logging.getLogger(__name__)
 
 class TimeoutError(Exception):
     """Raised when document conversion exceeds timeout limits."""
-    pass
 
 
 class DoclingConverterAdapter:

@@ -235,8 +235,8 @@
 - [X] T103 Add diagnostic logging improvements for timeout/page failures in src/infrastructure/adapters/docling_converter.py
 - [X] T104 [P] Update documentation with FastMCP configuration examples in docs/
 - [X] T105 [P] Update documentation with environment variable configuration guide including Zotero setup in docs/
-- [ ] T106 Code cleanup and refactoring across all adapters
-- [ ] T107 Run quickstart.md validation scenarios
+- [X] T106 Code cleanup and refactoring across all adapters
+- [X] T107 Run quickstart.md validation scenarios
 
 ---
 
