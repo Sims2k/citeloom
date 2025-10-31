@@ -43,13 +43,20 @@ Branching: trunk-based (`main` only). Use short-lived feature branches if needed
 
 **Ingest documents**:
 ```bash
-uv run citeloom ingest --project citeloom/clean-arch ./assets/raw/Keen - 2025 - Clean Architecture with Python Implement scalable and maintainable applications using proven archit.pdf
+# Process all documents in assets/raw directory (default)
+uv run citeloom ingest run --project citeloom/clean-arch
+
+# Process a specific document
+uv run citeloom ingest run --project citeloom/clean-arch ./assets/raw/document.pdf
+
+# Process all documents in a custom directory
+uv run citeloom ingest run --project citeloom/clean-arch ./path/to/documents/
 ```
 
 **Query chunks**:
 ```bash
-uv run citeloom query --project citeloom/clean-arch --q "entities vs value objects" --k 6
-uv run citeloom query --project citeloom/clean-arch --q "dependency inversion" --hybrid --top-k 6
+uv run citeloom query run --project citeloom/clean-arch --query "entities vs value objects" --top-k 6
+uv run citeloom query run --project citeloom/clean-arch --query "dependency inversion" --hybrid --top-k 6
 ```
 
 **MCP Server** (for AI editor integration):
@@ -84,14 +91,20 @@ url = "http://localhost:6333"
 ### Sample commands
 
 ```bash
-# Ingest documents
-uv run citeloom ingest --project citeloom/clean-arch ./assets/raw/clean-arch.pdf
+# Ingest all documents in assets/raw (default directory)
+uv run citeloom ingest run --project citeloom/clean-arch
+
+# Ingest a specific document
+uv run citeloom ingest run --project citeloom/clean-arch ./assets/raw/clean-arch.pdf
+
+# Ingest all documents in a directory
+uv run citeloom ingest run --project citeloom/clean-arch ./documents/
 
 # Query chunks (semantic search)
-uv run citeloom query --project citeloom/clean-arch --q "entities vs value objects" --k 6
+uv run citeloom query run --project citeloom/clean-arch --query "entities vs value objects" --top-k 6
 
 # Query with hybrid search (full-text + vector)
-uv run citeloom query --project citeloom/clean-arch --q "dependency inversion" --hybrid --top-k 6
+uv run citeloom query run --project citeloom/clean-arch --query "dependency inversion" --hybrid --top-k 6
 
 # Run MCP server for AI editor integration
 uv run citeloom mcp-server
