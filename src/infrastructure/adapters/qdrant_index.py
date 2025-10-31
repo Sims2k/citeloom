@@ -18,9 +18,7 @@ try:
         CollectionStatus,
         PayloadSchemaType,
         Query,
-        QueryEnum,
         Fusion,
-        TextQuery,
     )
 except Exception:  # pragma: no cover
     QdrantClient = None  # type: ignore
@@ -32,9 +30,7 @@ except Exception:  # pragma: no cover
     CollectionStatus = None  # type: ignore
     PayloadSchemaType = None  # type: ignore
     Query = None  # type: ignore
-    QueryEnum = None  # type: ignore
     Fusion = None  # type: ignore
-    TextQuery = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
