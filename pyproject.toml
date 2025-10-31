@@ -54,3 +54,10 @@ dev = [
     "pytest-cov>=7.0.0",
     "ruff>=0.14.2",
 ]
+docling = [
+    # Optional dependency group for docling (document conversion/chunking)
+    # Install with: uv sync --group docling
+    # Note: Not available on Windows Python 3.12 (deepsearch-glm lacks Windows wheels)
+    #       Windows users should use WSL or wait for Windows support
+    "docling>=1.0.0",
+]

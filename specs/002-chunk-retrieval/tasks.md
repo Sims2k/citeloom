@@ -19,8 +19,12 @@
 
 - [X] T001 Create project directory structure per implementation plan in plan.md
 - [X] T002 [P] Add Docling dependency to pyproject.toml for document conversion
-  - **Attempted**: `uv add docling` failed on Windows (`win_amd64`) - `deepsearch-glm` dependency lacks Windows wheels.
-  - **Status**: Not installed on Windows. Windows users need WSL or alternative solutions. Docling will be conditionally imported in adapters to handle this gracefully.
+  - **Status**: Optional dependency - not available on Windows Python 3.12 (deepsearch-glm lacks Windows wheels).
+  - **Resolution**: Adapters updated with graceful error handling:
+    - `DoclingConverterAdapter` and `DoclingHybridChunkerAdapter` use try/except for docling import
+    - Clear ImportError messages guide Windows users to WSL or alternative solutions
+    - Adapters will fail fast with helpful messages if docling is required but unavailable
+  - **Windows Options**: Use WSL, Python 3.11 (not recommended), or wait for Windows support
 - [X] T003 [P] Add Qdrant Python client dependency to pyproject.toml for vector operations
 - [X] T004 [P] Add FastEmbed dependency to pyproject.toml for local embeddings
 - [X] T005 [P] Add OpenAI Python SDK dependency (optional, dev group) to pyproject.toml
