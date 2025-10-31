@@ -1,14 +1,22 @@
 # Sample configuration for CiteLoom
-[project]
-id = "citeloom/clean-arch"
+[project."citeloom/clean-arch"]
 collection = "proj-citeloom-clean-arch"
-embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
+references_json = "references/clean-arch.json"
+embedding_model = "fastembed/all-MiniLM-L6-v2"
 hybrid_enabled = true
 
-[paths]
-references = "references/clean-arch.json"
-raw_assets = "assets/raw/"
-audit_dir = "var/audit/"
+[chunking]
+max_tokens = 450
+overlap_tokens = 60
+heading_context = 2
+tokenizer = "minilm"
 
 [qdrant]
 url = "http://localhost:6333"
+api_key = ""
+timeout_ms = 15000
+create_fulltext_index = true
+
+[paths]
+raw_dir = "assets/raw"
+audit_dir = "var/audit"

@@ -1,10 +1,120 @@
-from infrastructure.adapters.docling_converter import DoclingConverterAdapter
-from infrastructure.adapters.docling_chunker import DoclingHybridChunkerAdapter
+"""Integration tests for Docling document conversion and chunking."""
+
+from pathlib import Path
+from src.domain.policy.chunking_policy import ChunkingPolicy
+from src.infrastructure.adapters.docling_converter import DoclingConverterAdapter
+from src.infrastructure.adapters.docling_chunker import DoclingHybridChunkerAdapter
 
 
-def test_docling_smoke_stub():
-    conv = DoclingConverterAdapter()
+def test_docling_conversion_page_map():
+    """Test that DoclingConverterAdapter produces conversion result with page map."""
+    try:
+        converter = DoclingConverterAdapter()
+    except ImportError:
+        # Docling not available (Windows compatibility)
+        # Use placeholder implementation
+        pass
+    
+    converter = DoclingConverterAdapter()
+    result = converter.convert("dummy_path.pdf")
+    
+    # Verify conversion result structure
+    assert "doc_id" in result, "Conversion result should contain doc_id"
+    assert "structure" in result, "Conversion result should contain structure"
+    
+    structure = result.get("structure", {})
+    assert "page_map" in structure, "Structure should contain page_map"
+    
+    page_map = structure.get("page_map", {})
+    assert isinstance(page_map, dict), "page_map should be a dictionary"
+    
+    # Verify page_map maps page numbers to text offsets (or has placeholder structure)
+    if page_map:
+        for page_num, offset in page_map.items():
+            assert isinstance(page_num, int), f"Page number should be int, got {type(page_num)}"
+            assert isinstance(offset, int), f"Offset should be int, got {type(offset)}"
+
+
+def test_docling_conversion_heading_tree():
+    """Test that DoclingConverterAdapter produces conversion result with heading tree."""
+    converter = DoclingConverterAdapter()
+    result = converter.convert("dummy_path.pdf")
+    
+    structure = result.get("structure", {})
+    assert "heading_tree" in structure, "Structure should contain heading_tree"
+    
+    heading_tree = structure.get("heading_tree", {})
+    assert isinstance(heading_tree, dict), "heading_tree should be a dictionary"
+
+
+def test_docling_chunking_with_policy():
+    """Test that DoclingHybridChunkerAdapter chunks documents according to policy."""
+    converter = DoclingConverterAdapter()
     chunker = DoclingHybridChunkerAdapter()
-    c = conv.convert("/tmp/source.pdf")
-    chunks = chunker.chunk(c)
-    assert chunks and "text" in chunks[0]
+    
+    # Convert a document
+    conversion_result = converter.convert("dummy_path.pdf")
+    
+    # Create chunking policy
+    policy = ChunkingPolicy(
+        max_tokens=450,
+        overlap_tokens=60,
+        heading_context=2,
+        tokenizer_id="minilm",
+    )
+    
+    # Chunk the document
+    chunks = chunker.chunk(conversion_result, policy)
+    
+    # Verify chunks were created
+    assert len(chunks) > 0, "Should produce at least one chunk"
+    
+    # Verify chunk structure
+    from src.domain.models.chunk import Chunk
+    first_chunk = chunks[0]
+    assert isinstance(first_chunk, Chunk), "Chunks should be Chunk objects"
+    
+    assert first_chunk.id, "Chunk should have deterministic ID"
+    assert first_chunk.doc_id, "Chunk should have doc_id"
+    assert first_chunk.text, "Chunk should have text"
+    assert first_chunk.page_span, "Chunk should have page_span"
+    assert isinstance(first_chunk.chunk_idx, int), "Chunk should have chunk_idx"
+
+
+def test_docling_chunking_deterministic_ids():
+    """Test that chunking produces deterministic IDs for same inputs."""
+    converter = DoclingConverterAdapter()
+    chunker = DoclingHybridChunkerAdapter()
+    
+    conversion_result = converter.convert("dummy_path.pdf")
+    policy = ChunkingPolicy(tokenizer_id="minilm")
+    
+    # Chunk twice with same inputs
+    chunks1 = chunker.chunk(conversion_result, policy)
+    chunks2 = chunker.chunk(conversion_result, policy)
+    
+    assert len(chunks1) == len(chunks2), "Same conversion should produce same number of chunks"
+    
+    # Verify IDs are deterministic
+    for c1, c2 in zip(chunks1, chunks2):
+        assert c1.id == c2.id, f"Chunk IDs should be deterministic: {c1.id} != {c2.id}"
+        assert c1.doc_id == c2.doc_id
+        assert c1.page_span == c2.page_span
+        assert c1.chunk_idx == c2.chunk_idx
+
+
+def test_docling_chunking_page_spans():
+    """Test that chunks have valid page spans."""
+    converter = DoclingConverterAdapter()
+    chunker = DoclingHybridChunkerAdapter()
+    
+    conversion_result = converter.convert("dummy_path.pdf")
+    policy = ChunkingPolicy(tokenizer_id="minilm")
+    
+    chunks = chunker.chunk(conversion_result, policy)
+    
+    for chunk in chunks:
+        assert len(chunk.page_span) == 2, "Page span should be tuple of (start, end)"
+        start, end = chunk.page_span
+        assert start <= end, f"Page span start ({start}) should be <= end ({end})"
+        assert start > 0, "Page span start should be positive"

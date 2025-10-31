@@ -1,7 +1,7 @@
 import typer
 
-from infrastructure.adapters.fastembed_embeddings import FastEmbedAdapter
-from infrastructure.adapters.qdrant_index import QdrantIndexAdapter
+from src.infrastructure.adapters.fastembed_embeddings import FastEmbedAdapter
+from src.infrastructure.adapters.qdrant_index import QdrantIndexAdapter
 
 app = typer.Typer(help="Validate environment and configuration")
 

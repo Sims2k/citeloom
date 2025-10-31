@@ -15,8 +15,46 @@ is easy to verify and simple to cite.
 - Split into clear, readable snippets with helpful context
 - Attach citation details so you can reference with confidence
 - Keep projects separate to avoid mixing unrelated material
-- Use from the command line and your favorite AI tools
+- Use from the command line and your favorite AI tools (MCP integration for Cursor, Claude Desktop)
 - Search and get concise answers with links back to the source
+
+## Quick Setup
+
+### 1. Install Dependencies
+
+```bash
+# Project setup
+uv sync
+```
+
+### 2. Start Qdrant Vector Database
+
+```bash
+# Option A: Local Docker (recommended)
+docker run -d --name qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant
+
+# Option B: Qdrant Cloud (production)
+# Sign up at https://cloud.qdrant.io/ and configure in citeloom.toml
+```
+
+### 3. Configure Project
+
+Create `citeloom.toml` (see [Config](#config) section below).
+
+### 4. Ingest Documents
+
+```bash
+# Process all documents in assets/raw
+uv run citeloom ingest run --project citeloom/clean-arch
+```
+
+### 5. Query Chunks
+
+```bash
+uv run citeloom query run --project citeloom/clean-arch --query "your query" --top-k 6
+```
+
+**Full setup guide:** See [docs/setup-guide.md](docs/setup-guide.md) for detailed instructions.
 
 ## Developer Quickstart
 
@@ -39,11 +77,30 @@ Branching: trunk-based (`main` only). Use short-lived feature branches if needed
 
 ## CLI
 
-Command reference and examples will go here.
+### Basic Commands
 
-## Config
+**Ingest documents**:
+```bash
+# Process all documents in assets/raw directory (default)
+uv run citeloom ingest run --project citeloom/clean-arch
 
-Document `citeloom.toml` fields and examples here.
+# Process a specific document
+uv run citeloom ingest run --project citeloom/clean-arch ./assets/raw/document.pdf
+
+# Process all documents in a custom directory
+uv run citeloom ingest run --project citeloom/clean-arch ./path/to/documents/
+```
+
+**Query chunks**:
+```bash
+uv run citeloom query run --project citeloom/clean-arch --query "entities vs value objects" --top-k 6
+uv run citeloom query run --project citeloom/clean-arch --query "dependency inversion" --hybrid --top-k 6
+```
+
+**MCP Server** (for AI editor integration):
+```bash
+uv run citeloom mcp-server
+```
 
 See also: [Naming alternatives](docs/branding/naming-alternatives.md)
 
@@ -62,12 +119,67 @@ raw_assets = "assets/raw/"
 audit_dir = "var/audit/"
 
 [qdrant]
-url = "http://localhost:6333"
+url = "http://localhost:6333"  # Or your Qdrant Cloud URL
+api_key = ""  # Only if using Qdrant Cloud
+create_fulltext_index = true  # Required for hybrid search
+```
+
+**Note**: Qdrant is required for persistent storage. Without it, CiteLoom uses an in-memory fallback that doesn't persist data between commands.
 ```
 
 ### Sample commands
 
 ```bash
-uv run citeloom ingest --project citeloom/clean-arch ./assets/raw/clean-arch.pdf
-uv run citeloom query --project citeloom/clean-arch --q "entities vs value objects" --k 6
+# Ingest all documents in assets/raw (default directory)
+uv run citeloom ingest run --project citeloom/clean-arch
+
+# Ingest a specific document
+uv run citeloom ingest run --project citeloom/clean-arch ./assets/raw/clean-arch.pdf
+
+# Ingest all documents in a directory
+uv run citeloom ingest run --project citeloom/clean-arch ./documents/
+
+# Query chunks (semantic search)
+uv run citeloom query run --project citeloom/clean-arch --query "entities vs value objects" --top-k 6
+
+# Query with hybrid search (full-text + vector)
+uv run citeloom query run --project citeloom/clean-arch --query "dependency inversion" --hybrid --top-k 6
+
+# Run MCP server for AI editor integration
+uv run citeloom mcp-server
 ```
+
+## MCP Integration
+
+CiteLoom provides MCP (Model Context Protocol) server integration for AI development environments like Cursor and Claude Desktop.
+
+### Setup MCP Server
+
+1. **Configure MCP server** in your editor settings (e.g., Cursor/Claude Desktop):
+
+```json
+{
+  "mcpServers": {
+    "citeloom": {
+      "command": "uv",
+      "args": ["run", "citeloom", "mcp-server"],
+      "env": {
+        "QDRANT_URL": "http://localhost:6333",
+        "CITELOOM_CONFIG": "./citeloom.toml"
+      }
+    }
+  }
+}
+```
+
+2. **Restart your editor** to load the MCP server
+
+### Available MCP Tools
+
+- **`list_projects`**: List all configured projects with metadata
+- **`find_chunks`**: Vector search for chunks in a project (8s timeout)
+- **`query_hybrid`**: Hybrid search combining full-text and vector search (15s timeout)
+- **`inspect_collection`**: Inspect collection metadata and sample payloads (5s timeout)
+- **`store_chunks`**: Batched upsert of chunks (100-500 chunks, 15s timeout)
+
+All tools enforce strict project filtering and return citation-ready metadata with trimmed text output.
