@@ -32,8 +32,8 @@ class CitationMeta:
         """Validate citation metadata."""
         if not self.authors:
             raise ValueError("authors must be non-empty list")
-        if not (self.doi or self.url):
-            raise ValueError("Either doi or url must be provided")
+        # Note: doi or url is optional for metadata resolution (may be missing from Zotero)
+        # Validation removed to allow graceful handling of incomplete metadata
         if self.year is not None and self.year <= 0:
             raise ValueError(f"year must be positive integer if provided, got {self.year}")
 

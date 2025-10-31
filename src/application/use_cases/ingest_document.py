@@ -65,20 +65,19 @@ def ingest_document(
     try:
         resolved_meta = resolver.resolve(
             citekey=None,  # Citekey not available before conversion
-            references_path=request.references_path,
             doc_id="",  # Doc ID not available yet, will match by title/DOI
             source_hint=title_hint,
+            zotero_config=request.zotero_config,
         )
         if resolved_meta:
             logger.info(
                 f"Metadata resolved early: citekey={resolved_meta.citekey}, language={resolved_meta.language}",
                 extra={"correlation_id": correlation_id, "citekey": resolved_meta.citekey, "language": resolved_meta.language},
             )
-            # Extract language from metadata for OCR
+            # Extract language from metadata for OCR (already mapped by resolver)
             if resolved_meta.language:
-                # Map Zotero language code to OCR language (e.g., 'en-US' → 'en')
-                lang_code = resolved_meta.language.split('-')[0].lower()
-                ocr_languages = [lang_code]
+                # Language is already mapped to OCR code (e.g., 'en', 'de') by resolver
+                ocr_languages = [resolved_meta.language]
     except Exception as e:
         warning_msg = f"Early metadata resolution failed: {e}"
         warnings.append(warning_msg)
@@ -141,9 +140,9 @@ def ingest_document(
         try:
             resolved_meta = resolver.resolve(
                 citekey=None,  # Citekey not available from conversion result
-                references_path=request.references_path,
                 doc_id=doc_id,
                 source_hint=source_hint,
+                zotero_config=request.zotero_config,
             )
             if resolved_meta:
                 logger.info(

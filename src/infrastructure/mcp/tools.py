@@ -19,7 +19,7 @@ from ...infrastructure.adapters.docling_converter import DoclingConverterAdapter
 from ...infrastructure.adapters.docling_chunker import DoclingHybridChunkerAdapter
 from ...infrastructure.adapters.fastembed_embeddings import FastEmbedAdapter
 from ...infrastructure.adapters.qdrant_index import QdrantIndexAdapter
-from ...infrastructure.adapters.zotero_metadata import ZoteroCslJsonResolver
+from ...infrastructure.adapters.zotero_metadata import ZoteroPyzoteroResolver
 from ...infrastructure.config.settings import Settings
 from ...infrastructure.logging import get_correlation_id, set_correlation_id
 
@@ -320,9 +320,8 @@ async def handle_ingest_from_source(arguments: dict[str, Any], settings: Setting
         create_fulltext_index=settings.qdrant.create_fulltext_index,
     )
     
-    # Initialize metadata resolver (always create, references_path is passed to resolve() method)
-    references_path = str(project_settings.references_json) if hasattr(project_settings, "references_json") else ""
-    resolver = ZoteroCslJsonResolver()
+    # Initialize metadata resolver (uses environment variables or zotero_config)
+    resolver = ZoteroPyzoteroResolver()
     
     # Determine documents to process
     documents_to_process: list[Path] = []
@@ -350,11 +349,11 @@ async def handle_ingest_from_source(arguments: dict[str, Any], settings: Setting
         
         try:
             for doc_path in documents_to_process:
-                # Create ingest request
+                # Create ingest request (zotero_config=None means use env vars)
                 request = IngestRequest(
                     source_path=str(doc_path),
                     project_id=project_id,
-                    references_path=references_path or "",
+                    zotero_config=None,  # Use environment variables for Zotero config
                     embedding_model=project_settings.embedding_model,
                 )
                 

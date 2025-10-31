@@ -162,16 +162,16 @@
 
 ### Implementation for User Story 6
 
-- [ ] T068 [US6] Add pyzotero dependency via `uv add pyzotero` for Zotero API access
-- [ ] T069 [US6] Replace ZoteroCslJsonResolver with ZoteroPyzoteroResolver in src/infrastructure/adapters/zotero_metadata.py implementing pyzotero client initialization (library_id, library_type, api_key for remote, or local=True for local access)
-- [ ] T070 [US6] Implement Better BibTeX JSON-RPC client in src/infrastructure/adapters/zotero_metadata.py with port availability check (port 23119 for Zotero, 24119 for Juris-M) with timeout (5-10s), detecting if Better BibTeX is running before attempting item.citationkey method calls
-- [ ] T071 [US6] Add Better BibTeX citekey extraction fallback parsing item['data']['extra'] field for "Citation Key: citekey" pattern in src/infrastructure/adapters/zotero_metadata.py
-- [ ] T072 [US6] Implement pyzotero item search by DOI (exact match, normalized) then by title (normalized, fuzzy threshold ≥ 0.8) in src/infrastructure/adapters/zotero_metadata.py
-- [ ] T073 [US6] Extract metadata fields from pyzotero item response (title, creators → authors, year from date, DOI, URL, tags, collections, language) in src/infrastructure/adapters/zotero_metadata.py
-- [ ] T074 [US6] Add language field mapping (Zotero codes → OCR language codes, e.g., 'en-US' → 'en') in src/infrastructure/adapters/zotero_metadata.py
-- [ ] T075 [US6] Pass language from metadata to converter for OCR language selection in src/application/use_cases/ingest_document.py
-- [ ] T076 [US6] Update MetadataResolverPort protocol in src/application/ports/metadata_resolver.py to replace references_path parameter with zotero_config (optional dict) and document pyzotero usage
-- [ ] T077 [US6] Add graceful error handling for pyzotero API connection failures and Better BibTeX JSON-RPC unavailability in src/infrastructure/adapters/zotero_metadata.py (non-blocking, returns None, logs MetadataMissing)
+- [X] T068 [US6] Add pyzotero dependency via `uv add pyzotero` for Zotero API access
+- [X] T069 [US6] Replace ZoteroCslJsonResolver with ZoteroPyzoteroResolver in src/infrastructure/adapters/zotero_metadata.py implementing pyzotero client initialization (library_id, library_type, api_key for remote, or local=True for local access)
+- [X] T070 [US6] Implement Better BibTeX JSON-RPC client in src/infrastructure/adapters/zotero_metadata.py with port availability check (port 23119 for Zotero, 24119 for Juris-M) with timeout (5-10s), detecting if Better BibTeX is running before attempting item.citationkey method calls
+- [X] T071 [US6] Add Better BibTeX citekey extraction fallback parsing item['data']['extra'] field for "Citation Key: citekey" pattern in src/infrastructure/adapters/zotero_metadata.py
+- [X] T072 [US6] Implement pyzotero item search by DOI (exact match, normalized) then by title (normalized, fuzzy threshold ≥ 0.8) in src/infrastructure/adapters/zotero_metadata.py
+- [X] T073 [US6] Extract metadata fields from pyzotero item response (title, creators → authors, year from date, DOI, URL, tags, collections, language) in src/infrastructure/adapters/zotero_metadata.py
+- [X] T074 [US6] Add language field mapping (Zotero codes → OCR language codes, e.g., 'en-US' → 'en') in src/infrastructure/adapters/zotero_metadata.py
+- [X] T075 [US6] Pass language from metadata to converter for OCR language selection in src/application/use_cases/ingest_document.py
+- [X] T076 [US6] Update MetadataResolverPort protocol in src/application/ports/metadata_resolver.py to replace references_path parameter with zotero_config (optional dict) and document pyzotero usage
+- [X] T077 [US6] Add graceful error handling for pyzotero API connection failures and Better BibTeX JSON-RPC unavailability in src/infrastructure/adapters/zotero_metadata.py (non-blocking, returns None, logs MetadataMissing)
 
 **Checkpoint**: At this point, User Stories 1-6 should all work independently
 
