@@ -11,6 +11,7 @@ from src.application.dto.query import QueryRequest
 from src.application.use_cases.query_chunks import query_chunks
 from src.application.ports.embeddings import EmbeddingPort
 from src.application.ports.vector_index import VectorIndexPort
+from src.domain.errors import ProjectNotFound
 from src.infrastructure.adapters.fastembed_embeddings import FastEmbedAdapter
 from src.infrastructure.adapters.qdrant_index import QdrantIndexAdapter
 from src.infrastructure.config.settings import Settings
@@ -70,6 +71,11 @@ def run(
     # Execute query
     try:
         result = query_chunks(request, embedder, index)
+    except ProjectNotFound as e:
+        console.print(f"[red]Project not found: {project}[/red]")
+        console.print(f"[yellow]Note: If using in-memory fallback (Qdrant not running), data doesn't persist between commands.[/yellow]")
+        console.print(f"[yellow]Start Qdrant server or use Qdrant Cloud for persistent storage.[/yellow]")
+        raise typer.Exit(code=1)
     except Exception as e:
         console.print(f"[red]Query failed: {e}[/red]")
         raise typer.Exit(code=1)

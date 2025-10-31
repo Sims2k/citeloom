@@ -64,9 +64,12 @@ uv run citeloom query run --project citeloom/clean-arch --query "dependency inve
 uv run citeloom mcp-server
 ```
 
-## Config
+## Requirements
 
-Document `citeloom.toml` fields and examples here.
+- **Qdrant**: Vector database for storing and querying chunks
+  - Local: Run `docker run -p 6333:6333 qdrant/qdrant` or use Docker Compose
+  - Cloud: Use Qdrant Cloud with API key
+  - Without Qdrant: In-memory fallback works for ingestion but data doesn't persist between commands
 
 See also: [Naming alternatives](docs/branding/naming-alternatives.md)
 
@@ -85,7 +88,26 @@ raw_assets = "assets/raw/"
 audit_dir = "var/audit/"
 
 [qdrant]
-url = "http://localhost:6333"
+url = "http://localhost:6333"  # Or your Qdrant Cloud URL
+api_key = ""  # Only if using Qdrant Cloud
+create_fulltext_index = true  # Required for hybrid search
+```
+
+### Starting Qdrant (Local)
+
+For local development, start Qdrant using Docker:
+
+```bash
+docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant
+```
+
+Or with Docker Compose (if you have a `docker-compose.yml`):
+
+```bash
+docker-compose up -d qdrant
+```
+
+**Note**: Without Qdrant running, CiteLoom uses an in-memory fallback. Data ingested will not persist between command runs.
 ```
 
 ### Sample commands
