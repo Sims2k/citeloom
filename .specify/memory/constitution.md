@@ -3,7 +3,7 @@ Weave long-form sources into small, citable context for your AI work.
 
 <!--
 Sync Impact Report
-- Version change: 1.9.0 → 1.11.0
+- Version change: 1.9.0 → 1.12.0
 - Modified principles/sections:
   - Performance & Hybrid Retrieval → updated to Qdrant named vectors with model binding and RRF fusion
   - Vector Database Patterns → added Named Vectors & Model Binding, Storage Optimization sections
@@ -20,10 +20,11 @@ Sync Impact Report
   - None (all templates remain compatible)
 - Deferred TODOs:
   - TODO(RATIFICATION_DATE): Original adoption date unknown; set once confirmed
-- Planning Complete:
+- Planning & Analysis Complete:
   - Milestone 003-framework-implementation planning phase complete (2025-10-31)
   - Generated: plan.md, research.md, data-model.md, contracts/, quickstart.md, tasks.md
-  - Ready for implementation with 89 tasks organized by 8 user stories
+  - Cross-artifact analysis completed (2025-10-31): Fixed MCP tool name inconsistencies (spec.md updated to use ingest_from_source, query, query_hybrid), removed obsolete CSL-JSON references (replaced with pyzotero API connectivity checks), resolved task ID collisions (T058→T068, renumbered US6-US8 tasks), clarified FR-027 remediation guidance requirement
+  - Ready for implementation with 107 tasks organized by 8 user stories (pyzotero integration complete)
 -->
 
 ## Core Principles
@@ -521,4 +522,4 @@ Operating Procedure (Humans & Agents)
 
 ---
 
-**Version**: 1.11.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-10-31 (Milestone M3 planning complete: Qdrant named vectors with model binding, Docling v2 completion, FastMCP configuration, OCR language integration, tasks.md generated - Framework Implementation Milestone M3)
+**Version**: 1.12.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-10-31 (Milestone M3 analysis complete: Fixed specification inconsistencies (MCP tool names, CSL-JSON references, task IDs), clarified remediation guidance, ready for implementation - Framework Implementation Milestone M3)

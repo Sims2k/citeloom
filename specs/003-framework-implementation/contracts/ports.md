@@ -111,7 +111,7 @@ class ChunkerPort(Protocol):
 
 ## MetadataResolverPort
 
-Resolves citation metadata from reference management exports with language field extraction.
+Resolves citation metadata from Zotero library via pyzotero API with Better BibTeX citekey extraction and language field extraction.
 
 **Protocol Definition**:
 ```python
@@ -123,37 +123,43 @@ class MetadataResolverPort(Protocol):
     def resolve(
         self, 
         citekey: str | None,
-        references_path: str,
         doc_id: str,
-        source_hint: str | None = None
+        source_hint: str | None = None,
+        zotero_config: dict[str, Any] | None = None
     ) -> CitationMeta | None:
         """
-        Resolve citation metadata from CSL-JSON references file.
+        Resolve citation metadata from Zotero library via pyzotero API.
         
         Args:
-            citekey: Citation key hint (if available)
-            references_path: Path to CSL-JSON references file
+            citekey: Citation key hint (if available, from Better BibTeX)
             doc_id: Document identifier for matching
             source_hint: Additional source hint (title, DOI, etc.)
+            zotero_config: Optional Zotero configuration dict with library_id, 
+                          library_type, api_key (for remote), or local=True 
+                          (for local access). If None, uses environment variables.
         
         Returns:
             CitationMeta with language field if match found, None otherwise
         
         Note:
-            Non-blocking: Returns None if no match, logs MetadataMissing warning
+            Non-blocking: Returns None if no match, logs MetadataMissing warning.
+            Gracefully handles pyzotero API connection failures and Better BibTeX
+            JSON-RPC unavailability.
         """
         ...
 ```
 
 **Implementation Requirements**:
-- Must match by DOI first (exact match, normalized)
-- Must fallback to normalized title matching (lowercase, stripped punctuation, collapsed spaces, fuzzy threshold ≥ 0.8)
-- Must extract: citekey, title, authors, year, doi/url, tags, collections, **language** (for OCR)
+- Must use pyzotero to access Zotero library (remote via library_id/library_type/api_key, or local via local=True)
+- Must extract Better BibTeX citekey via JSON-RPC API (port 23119 for Zotero, 24119 for Juris-M) when available, using `item.citationkey` method, falling back to parsing `item['data']['extra']` field for "Citation Key: citekey" pattern
+- Must match by DOI first (exact match, normalized), then fallback to normalized title matching (lowercase, stripped punctuation, collapsed spaces, fuzzy threshold ≥ 0.8)
+- Must extract: citekey (from Better BibTeX), title, authors, year, doi/url, tags, collections, **language** (for OCR)
 - Should log `MetadataMissing` warning if unresolved (non-blocking, actionable hints)
 - Must handle Unicode/diacritics in names
 - Must map Zotero language codes to OCR language codes (e.g., 'en-US' → 'en')
+- Must gracefully handle pyzotero API connection failures, Better BibTeX JSON-RPC unavailability, and timeout scenarios
 
-**Adapter**: `ZoteroCslJsonResolver` in `src/infrastructure/adapters/zotero_metadata.py`
+**Adapter**: `ZoteroPyzoteroResolver` in `src/infrastructure/adapters/zotero_metadata.py` (replaces `ZoteroCslJsonResolver`)
 
 ---
 

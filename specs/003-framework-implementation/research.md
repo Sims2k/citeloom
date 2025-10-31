@@ -135,44 +135,68 @@ This document consolidates research findings and technical decisions for the fra
 
 ---
 
-## 4. Zotero Integration Enhancements (Language & Metadata)
+## 4. Zotero Integration via pyzotero with Better BibTeX (Language & Metadata)
 
-### Decision: Extract language field from Zotero metadata for OCR language selection
+### Decision: Use pyzotero API for direct Zotero library access with Better BibTeX JSON-RPC for citekey extraction
 
 **Rationale**:
-- Zotero metadata includes `language` field per document
-- Using document's actual language improves OCR accuracy
-- Better BibTeX (BBT) auto-export provides stable citekeys and complete metadata
-- CSL-JSON format includes language field that maps directly to OCR language codes
+- **pyzotero** ([GitHub](https://github.com/urschrei/pyzotero)) is the standard Python client for Zotero API, providing direct access to live library data
+- Eliminates need for manual CSL-JSON exports, enabling real-time metadata retrieval
+- Supports both remote API access (library_id, library_type, api_key) and local access (local=True via Zotero local API server)
+- Better BibTeX JSON-RPC API provides stable citekeys via `item.citationkey` method (port 23119 for Zotero, 24119 for Juris-M)
+- Zotero metadata includes `language` field per document, improving OCR accuracy
+- Better BibTeX citekeys are more reliable than auto-generated keys
 
 **Alternatives Considered**:
+- **CSL-JSON file exports**: Requires manual export/update cycles, not real-time, adds workflow friction
+- **Reading zotero.sqlite directly**: High risk of database corruption when Zotero is running, not recommended
+- **Zotero Web API only**: Works but misses Better BibTeX citekeys without JSON-RPC integration
 - **Fixed default languages**: Less accurate for non-English/German documents
-- **Manual OCR language configuration**: Requires user knowledge of document languages
-- **Auto-detect from document**: Less reliable than explicit metadata
 
 **Implementation Notes**:
-- Extract `language` field from Zotero CSL-JSON metadata
+- Use pyzotero to initialize Zotero client: `zotero.Zotero(library_id, library_type, api_key)` for remote, or `zotero.Zotero(library_id, library_type, api_key=None, local=True)` for local
+- Configuration via environment variables: `ZOTERO_LIBRARY_ID`, `ZOTERO_LIBRARY_TYPE` ('user' or 'group'), `ZOTERO_API_KEY` (remote), `ZOTERO_LOCAL=true` (local)
+- Extract Better BibTeX citekey via JSON-RPC: Check if Better BibTeX is running (port 23119), use `item.citationkey` method with item key, fallback to parsing `item['data']['extra']` field for "Citation Key: citekey" pattern
+- Extract `language` field from `item['data']['language']` in pyzotero item response
 - Map Zotero language codes to OCR language codes (e.g., 'en-US' → 'en', 'de-DE' → 'de')
 - Fallback hierarchy: Zotero metadata language → explicit config → default ['en', 'de']
 - Normalize to OCR-supported language list (common: 'en', 'de', 'fr', 'es', 'it', etc.)
-- If language not in OCR supported list, fall back to default
+- Match by DOI first (exact match, normalized), then normalized title matching (fuzzy threshold ≥ 0.8)
 
-**Metadata Acquisition Strategies**:
-- **Preferred**: Zotero Web API - fetch items by collection/tag/library, request `format=json` for full fields
-- **Stable citekeys**: Better BibTeX (BBT) auto-export of CSL-JSON per collection
-- **Local client caveat**: Never read `zotero.sqlite` while Zotero is open (locks/corruption risk)
-- If using local paths, ensure Zotero is closed or use Web API/export path
+**Metadata Acquisition Flow**:
+1. Initialize pyzotero client with configuration (from env vars or zotero_config parameter)
+2. Search items by DOI (if available in source_hint), then by title
+3. If Better BibTeX is available, extract citekey via JSON-RPC API (`item.citationkey` method)
+4. Fallback to parsing `item['data']['extra']` for "Citation Key: citekey" if JSON-RPC unavailable
+5. Extract all metadata fields: citekey, title, creators → authors, year from date, DOI, URL, tags, collections, language
+6. Map language to OCR codes and use for document conversion
 
-**Fields to Normalize**:
-- `citekey` (BBT), `title`, `authors[]`, `year`, `doi`, `language`, `publisher/journal`, `pages`, `collection_keys[]`, `tags[]`, `attachment_paths[]`
+**Fields to Extract from pyzotero**:
+- `citekey`: From Better BibTeX JSON-RPC or `item['data']['extra']` field
+- `title`: `item['data']['title']`
+- `authors`: Format `item['data']['creators']` array (extract firstName, lastName, or name)
+- `year`: Extract from `item['data']['date']` (e.g., '2023' from '2023-01-15')
+- `doi`: `item['data'].get('DOI')` or `item['data'].get('doi')`
+- `url`: `item['data'].get('url')` or `item['data'].get('URL')`
+- `language`: `item['data'].get('language')` (maps to OCR language codes)
+- `tags`: Extract from `item['data']['tags']` array (list of tag objects with 'tag' key)
+- `collections`: Extract from `item['data'].get('collections', [])` or fetch via `zot.collections()` and match by collection keys
 - Keep both raw Zotero JSON and normalized subset for payload
-- Language field used for OCR language selection during document conversion
+
+**Error Handling**:
+- Gracefully handle pyzotero API connection failures (network issues, invalid credentials, library not found)
+- Gracefully handle Better BibTeX JSON-RPC unavailability (Zotero not running, Better BibTeX not installed, port not accessible)
+- Timeout Better BibTeX JSON-RPC requests (5-10 seconds)
+- Log `MetadataMissing` warnings for unmatched documents but continue ingestion
+- Return None if metadata cannot be resolved (non-blocking)
 
 **References**:
-- Zotero Web API documentation: Item fields, format=json
-- Better BibTeX: Auto-export, stable citekeys
-- CSL-JSON specification: Language field format
-- Best practices: Language-aware OCR improves accuracy
+- [pyzotero GitHub](https://github.com/urschrei/pyzotero) - Python client for Zotero API
+- [pyzotero Documentation](https://pyzotero.readthedocs.io/) - Full API reference
+- [Zotero Web API Documentation](https://www.zotero.org/support/dev/web_api/v3/basics) - Item fields, authentication
+- [Better BibTeX JSON-RPC](https://retorque.re/zotero-better-bibtex/) - Citation key API
+- [zotero-mcp](https://github.com/54yyyu/zotero-mcp) - Example Better BibTeX JSON-RPC integration
+- Best practices: Language-aware OCR improves accuracy, direct API access reduces workflow friction
 
 ---
 

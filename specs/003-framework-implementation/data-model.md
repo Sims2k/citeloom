@@ -63,10 +63,10 @@ Represents a semantically meaningful segment of a document with structure, citat
 
 ### CitationMeta
 
-Represents bibliographic metadata for a document, extracted from Zotero CSL-JSON with language information for OCR.
+Represents bibliographic metadata for a document, extracted from Zotero library via pyzotero API with Better BibTeX citekey and language information for OCR.
 
 **Fields**:
-- `citekey` (str): Citation key from Better BibTeX (e.g., `cleanArchitecture2023`)
+- `citekey` (str): Citation key from Better BibTeX (extracted via JSON-RPC API or parsed from item['data']['extra'] field, e.g., `cleanArchitecture2023`)
 - `title` (str): Document title
 - `authors` (list[str]): List of author names
 - `year` (int, optional): Publication year
@@ -127,7 +127,7 @@ Represents a user's document collection scope with configuration and model bindi
 **Fields**:
 - `id` (str): Project identifier (e.g., `citeloom/clean-arch`)
 - `collection_name` (str): Qdrant collection name (e.g., `proj-citeloom-clean-arch`)
-- `references_json` (Path): Path to CSL-JSON references file
+- `zotero_config` (dict[str, Any], optional): Zotero library configuration dict with library_id, library_type, api_key (for remote), or local=True (for local access). If None, uses environment variables.
 - `embedding_model` (str): Dense embedding model identifier (e.g., `fastembed/BAAI/bge-small-en-v1.5`)
 - `sparse_model` (str, optional): Sparse model identifier for hybrid search (default: `Qdrant/bm25`)
 - `hybrid_enabled` (bool): Whether hybrid search is enabled for this project
@@ -137,7 +137,7 @@ Represents a user's document collection scope with configuration and model bindi
 **Validation Rules**:
 - `id` must be unique across all projects
 - `collection_name` must be valid collection name (no special characters)
-- `references_json` must be readable file path
+- `zotero_config` must contain valid Zotero library configuration (library_id, library_type for remote, or local=True for local) when provided
 - `embedding_model` must match tokenizer family used in chunking (enforced in validation)
 - If `hybrid_enabled`, `sparse_model` must be set
 
@@ -251,7 +251,7 @@ Project
         │     └── converted from source document via Docling
         │
         └── enriched with CitationMeta
-              └── matched from Zotero CSL-JSON references
+              └── matched from Zotero library via pyzotero API
 ```
 
 **Identity & Uniqueness**:

@@ -35,7 +35,7 @@ Ingest documents from source files or Zotero collections into a project collecti
 - `source` (string, required): Path to source document/directory OR `source=zotero` with collection/tag filters
 - `options` (object, optional): Additional options:
   - `ocr_languages` (array[string]): Explicit OCR language codes (overrides Zotero/default)
-  - `references_path` (string): Override CSL-JSON references file path
+  - `zotero_config` (object, optional): Override Zotero configuration (library_id, library_type, api_key for remote, or local=true for local access). If omitted, uses environment variables.
   - `force_rebuild` (boolean): Force collection rebuild for model migration
 
 **Returns**:

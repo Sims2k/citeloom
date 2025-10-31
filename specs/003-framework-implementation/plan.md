@@ -7,7 +7,7 @@
 
 This milestone hardens the production readiness of CiteLoom's document retrieval system. It completes Docling conversion with structure preservation (page maps, heading trees, OCR with language detection from Zotero metadata), implements heading-aware chunking with tokenizer alignment and quality filtering, tightens Qdrant collections with payload indexes and hybrid retrieval, finalizes MCP tool contracts with bounded outputs and standardized error codes, and adds environment-based configuration for API keys.
 
-**Technical approach**: Complete framework-specific implementations for Docling (DocumentConverter with OCR and structure extraction, HybridChunker with tokenizer alignment), Qdrant (per-project collections with named vectors for dense+sparse hybrid search, payload indexes, on-disk storage for large projects), FastEmbed (model binding and cross-encoder rerankers), Zotero integration (language field extraction for OCR, CSL-JSON metadata resolution), and FastMCP server configuration.
+**Technical approach**: Complete framework-specific implementations for Docling (DocumentConverter with OCR and structure extraction, HybridChunker with tokenizer alignment), Qdrant (per-project collections with named vectors for dense+sparse hybrid search, payload indexes, on-disk storage for large projects), FastEmbed (model binding and cross-encoder rerankers), Zotero integration via pyzotero (language field extraction for OCR, Better BibTeX citekey extraction via JSON-RPC), and FastMCP server configuration.
 
 ## Technical Context
 
@@ -17,6 +17,7 @@ This milestone hardens the production readiness of CiteLoom's document retrieval
 - Docling v2 (DocumentConverter with OCR, HybridChunker with heading-aware chunking)
 - Qdrant Python client (named vectors for dense+sparse hybrid, model binding via `set_model()` and `set_sparse_model()`, RRF fusion)
 - FastEmbed (dense embeddings, sparse models BM25/SPLADE/miniCOIL, cross-encoder rerankers)
+- pyzotero (Python client for Zotero API - remote via library_id/library_type/api_key, or local via local=True)
 - python-dotenv (environment variable loading from `.env` files)
 - Typer (CLI framework)
 - Rich (terminal formatting)
@@ -25,7 +26,9 @@ This milestone hardens the production readiness of CiteLoom's document retrieval
 
 **Storage**:
 - Qdrant (per-project collections with named vectors, on-disk vectors/HNSW for large projects, payload indexes, full-text indexes)
-- Local filesystem (CSL-JSON reference files, audit logs in JSONL format, `.env` files)
+- Local filesystem (audit logs in JSONL format, `.env` files)
+- Zotero library (accessed via pyzotero API - remote or local)
+- Better BibTeX JSON-RPC API (port 23119 for Zotero, 24119 for Juris-M) for citekey extraction
 - No traditional relational database required
 
 **Testing**:

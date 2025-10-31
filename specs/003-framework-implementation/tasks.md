@@ -47,17 +47,17 @@
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] Implement DoclingConverterAdapter.convert() in src/infrastructure/adapters/docling_converter.py with Docling v2 DocumentConverter initialization
-- [ ] T012 [US1] Add OCR language selection logic in src/infrastructure/adapters/docling_converter.py (priority: Zotero metadata language → explicit config → default ['en', 'de'])
-- [ ] T013 [US1] Implement OCR configuration with Tesseract/RapidOCR in src/infrastructure/adapters/docling_converter.py for scanned documents
-- [ ] T014 [US1] Add timeout handling (120s document, 10s per-page) in src/infrastructure/adapters/docling_converter.py with diagnostic logging
-- [ ] T015 [US1] Implement page map extraction (page number → character span tuple) in src/infrastructure/adapters/docling_converter.py
-- [ ] T016 [US1] Implement heading tree extraction with page anchors in src/infrastructure/adapters/docling_converter.py
-- [ ] T017 [US1] Add text normalization (hyphen repair, whitespace normalization) preserving code/math blocks in src/infrastructure/adapters/docling_converter.py
-- [ ] T018 [US1] Add image-only page detection and logging in src/infrastructure/adapters/docling_converter.py
-- [ ] T019 [US1] Add Windows compatibility warnings (WSL/Docker guidance) in src/infrastructure/adapters/docling_converter.py
-- [ ] T020 [US1] Update TextConverterPort protocol in src/application/ports/text_converter.py to include ocr_languages parameter
-- [ ] T020a [US1] Add audit log writing infrastructure in src/infrastructure/adapters/qdrant_index.py or src/application/use_cases/ingest_document.py to write JSONL audit logs documenting added/updated/skipped counts, duration, document IDs, and embedding model (FR-018)
+- [X] T011 [US1] Implement DoclingConverterAdapter.convert() in src/infrastructure/adapters/docling_converter.py with Docling v2 DocumentConverter initialization
+- [X] T012 [US1] Add OCR language selection logic in src/infrastructure/adapters/docling_converter.py (priority: Zotero metadata language → explicit config → default ['en', 'de'])
+- [X] T013 [US1] Implement OCR configuration with Tesseract/RapidOCR in src/infrastructure/adapters/docling_converter.py for scanned documents
+- [X] T014 [US1] Add timeout handling (120s document, 10s per-page) in src/infrastructure/adapters/docling_converter.py with diagnostic logging
+- [X] T015 [US1] Implement page map extraction (page number → character span tuple) in src/infrastructure/adapters/docling_converter.py
+- [X] T016 [US1] Implement heading tree extraction with page anchors in src/infrastructure/adapters/docling_converter.py
+- [X] T017 [US1] Add text normalization (hyphen repair, whitespace normalization) preserving code/math blocks in src/infrastructure/adapters/docling_converter.py
+- [X] T018 [US1] Add image-only page detection and logging in src/infrastructure/adapters/docling_converter.py
+- [X] T019 [US1] Add Windows compatibility warnings (WSL/Docker guidance) in src/infrastructure/adapters/docling_converter.py
+- [X] T020 [US1] Update TextConverterPort protocol in src/application/ports/text_converter.py to include ocr_languages parameter
+- [X] T020a [US1] Add audit log writing infrastructure in src/infrastructure/adapters/qdrant_index.py or src/application/use_cases/ingest_document.py to write JSONL audit logs documenting added/updated/skipped counts, duration, document IDs, and embedding model (FR-018)
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
