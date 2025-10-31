@@ -182,18 +182,18 @@
 
 #### Infrastructure MCP
 
-- [ ] T053 [US4] Create MCP server setup in src/infrastructure/mcp/server.py with stdio/SSE transport
-- [ ] T054 [US4] Implement store_chunks MCP tool in src/infrastructure/mcp/tools.py with batched upsert, timeouts, error codes
-- [ ] T055 [US4] Implement find_chunks MCP tool in src/infrastructure/mcp/tools.py with vector search, project filtering, trimmed output
-- [ ] T056 [US4] Implement query_hybrid MCP tool in src/infrastructure/mcp/tools.py with hybrid search, timeout handling
-- [ ] T057 [US4] Implement inspect_collection MCP tool in src/infrastructure/mcp/tools.py with collection stats, embed_model, payload schema sample
-- [ ] T058 [US4] Implement list_projects MCP tool in src/infrastructure/mcp/tools.py with project enumeration
-- [ ] T059 [US4] Add error taxonomy to MCP tools in src/infrastructure/mcp/tools.py with INVALID_PROJECT, EMBEDDING_MISMATCH, INDEX_UNAVAILABLE, TIMEOUT codes
-- [ ] T060 [US4] Wire MCP tools to use cases (IngestDocument, QueryChunks, InspectIndex) in src/infrastructure/mcp/tools.py
+- [X] T053 [US4] Create MCP server setup in src/infrastructure/mcp/server.py with stdio/SSE transport
+- [X] T054 [US4] Implement store_chunks MCP tool in src/infrastructure/mcp/tools.py with batched upsert, timeouts, error codes
+- [X] T055 [US4] Implement find_chunks MCP tool in src/infrastructure/mcp/tools.py with vector search, project filtering, trimmed output
+- [X] T056 [US4] Implement query_hybrid MCP tool in src/infrastructure/mcp/tools.py with hybrid search, timeout handling
+- [X] T057 [US4] Implement inspect_collection MCP tool in src/infrastructure/mcp/tools.py with collection stats, embed_model, payload schema sample
+- [X] T058 [US4] Implement list_projects MCP tool in src/infrastructure/mcp/tools.py with project enumeration
+- [X] T059 [US4] Add error taxonomy to MCP tools in src/infrastructure/mcp/tools.py with INVALID_PROJECT, EMBEDDING_MISMATCH, INDEX_UNAVAILABLE, TIMEOUT codes
+- [X] T060 [US4] Wire MCP tools to use cases (IngestDocument, QueryChunks, InspectIndex) in src/infrastructure/mcp/tools.py
 
 #### Tests
 
-- [ ] T061 [P] [US4] Create integration test for MCP tools in tests/integration/test_mcp_tools.py with client invocation, error handling, timeout verification
+- [X] T061 [P] [US4] Create integration test for MCP tools in tests/integration/test_mcp_tools.py with client invocation, error handling, timeout verification
 
 **Checkpoint**: User Stories 1-4 should all work independently - MCP integration complete
 
