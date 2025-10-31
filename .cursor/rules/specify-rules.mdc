@@ -3,6 +3,7 @@
 Auto-generated from all feature plans. Last updated: 2025-10-30
 
 ## Active Technologies
+- Python 3.12.x (pinned in `.python-version`, managed via pyenv) (002-chunk-retrieval)
 
 - Python 3.12.x (pyenv pinned) + Docling, Qdrant client, FastEmbed (sentence-transformers/all-MiniLM-L6-v2), optional OpenAI embeddings, pytest, mypy, ruff (001-project-spec)
 
@@ -22,6 +23,7 @@ cd src; pytest; ruff check .
 Python 3.12.x (pyenv pinned): Follow standard conventions
 
 ## Recent Changes
+- 002-chunk-retrieval: Added Python 3.12.x (pinned in `.python-version`, managed via pyenv)
 
 - 001-project-spec: Added Python 3.12.x (pyenv pinned) + Docling, Qdrant client, FastEmbed (sentence-transformers/all-MiniLM-L6-v2), optional OpenAI embeddings, pytest, mypy, ruff
 

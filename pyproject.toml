@@ -6,13 +6,14 @@ requires-python = ">=3.12,<3.13"
 readme = "README.md"
 license = { file = "LICENSE" }
 dependencies = [
+    "docling>=2.59.0",
     "fastembed>=0.7.3",
     "mcp>=0.9.0",
     "pydantic>=2.12.3",
     "qdrant-client>=1.15.1",
     "rich>=14.2.0",
     "sentence-transformers>=5.1.2",
-    "typer>=0.20.0",
+    "typer>=0.19.2",
 ]
 
 [build-system]

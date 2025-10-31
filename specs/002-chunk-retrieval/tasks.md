@@ -43,29 +43,29 @@
 
 ### Domain Layer (Pure)
 
-- [ ] T010 [P] Create ChunkingPolicy in src/domain/policy/chunking_policy.py with max_tokens, overlap_tokens, heading_context, tokenizer_id
-- [ ] T011 [P] Create RetrievalPolicy in src/domain/policy/retrieval_policy.py with top_k, hybrid_enabled, min_score, require_project_filter, max_chars_per_chunk
-- [ ] T012 [P] Create ConversionResult model in src/domain/models/conversion_result.py with doc_id, structure (heading_tree, page_map), plain_text
-- [ ] T013 [P] Create Chunk model in src/domain/models/chunk.py with id, doc_id, text, page_span, section_heading, section_path, chunk_idx
-- [ ] T014 [P] Create CitationMeta model in src/domain/models/citation_meta.py with citekey, title, authors, year, doi/url, tags, collections
-- [ ] T015 [P] Create domain errors in src/domain/errors.py: EmbeddingModelMismatch, ProjectNotFound, HybridNotSupported, MetadataMissing
-- [ ] T016 [P] Create value objects in src/domain/types.py: ProjectId, CiteKey, PageSpan, SectionPath
+- [X] T010 [P] Create ChunkingPolicy in src/domain/policy/chunking_policy.py with max_tokens, overlap_tokens, heading_context, tokenizer_id
+- [X] T011 [P] Create RetrievalPolicy in src/domain/policy/retrieval_policy.py with top_k, hybrid_enabled, min_score, require_project_filter, max_chars_per_chunk
+- [X] T012 [P] Create ConversionResult model in src/domain/models/conversion_result.py with doc_id, structure (heading_tree, page_map), plain_text
+- [X] T013 [P] Create Chunk model in src/domain/models/chunk.py with id, doc_id, text, page_span, section_heading, section_path, chunk_idx
+- [X] T014 [P] Create CitationMeta model in src/domain/models/citation_meta.py with citekey, title, authors, year, doi/url, tags, collections
+- [X] T015 [P] Create domain errors in src/domain/errors.py: EmbeddingModelMismatch, ProjectNotFound, HybridNotSupported, MetadataMissing
+- [X] T016 [P] Create value objects in src/domain/types.py: ProjectId, CiteKey, PageSpan, SectionPath
 
 ### Application Layer (Ports & DTOs)
 
-- [ ] T017 [P] Define TextConverterPort protocol in src/application/ports/converter.py
-- [ ] T018 [P] Define ChunkerPort protocol in src/application/ports/chunker.py
-- [ ] T019 [P] Define MetadataResolverPort protocol in src/application/ports/metadata_resolver.py
-- [ ] T020 [P] Define EmbeddingPort protocol in src/application/ports/embeddings.py
-- [ ] T021 [P] Define VectorIndexPort protocol in src/application/ports/vector_index.py
-- [ ] T022 [P] Create IngestRequest and IngestResult DTOs in src/application/dto/ingest.py
-- [ ] T023 [P] Create QueryRequest, QueryResult, QueryResultItem DTOs in src/application/dto/query.py
+- [X] T017 [P] Define TextConverterPort protocol in src/application/ports/converter.py
+- [X] T018 [P] Define ChunkerPort protocol in src/application/ports/chunker.py
+- [X] T019 [P] Define MetadataResolverPort protocol in src/application/ports/metadata_resolver.py
+- [X] T020 [P] Define EmbeddingPort protocol in src/application/ports/embeddings.py
+- [X] T021 [P] Define VectorIndexPort protocol in src/application/ports/vector_index.py
+- [X] T022 [P] Create IngestRequest and IngestResult DTOs in src/application/dto/ingest.py
+- [X] T023 [P] Create QueryRequest, QueryResult, QueryResultItem DTOs in src/application/dto/query.py
 
 ### Infrastructure Layer (Shared)
 
-- [ ] T024 Create Pydantic settings class in src/infrastructure/config/settings.py for citeloom.toml configuration
-- [ ] T025 Create structured logging setup in src/infrastructure/logging.py with correlation ID support
-- [ ] T026 Create Typer CLI app entrypoint in src/infrastructure/cli/main.py
+- [X] T024 Create Pydantic settings class in src/infrastructure/config/settings.py for citeloom.toml configuration
+- [X] T025 Create structured logging setup in src/infrastructure/logging.py with correlation ID support
+- [X] T026 Create Typer CLI app entrypoint in src/infrastructure/cli/main.py
 
 **Checkpoint**: Foundation ready - user story implementation can now begin
 
