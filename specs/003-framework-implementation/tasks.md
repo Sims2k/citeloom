@@ -137,18 +137,18 @@
 
 ### Implementation for User Story 5
 
-- [ ] T046 [US5] Create FastMCP server setup in src/infrastructure/mcp/server.py with stdio transport
-- [ ] T047 [US5] Implement ingest_from_source tool in src/infrastructure/mcp/tools.py with 15s timeout and correlation ID support
-- [ ] T048 [US5] Implement query tool in src/infrastructure/mcp/tools.py with 8s timeout for dense-only search
-- [ ] T049 [US5] Implement query_hybrid tool in src/infrastructure/mcp/tools.py with 15s timeout for hybrid search
-- [ ] T050 [US5] Implement inspect_collection tool in src/infrastructure/mcp/tools.py with 5s timeout showing collection stats and model bindings
-- [ ] T051 [US5] Implement list_projects tool in src/infrastructure/mcp/tools.py (no timeout, fast enumeration)
-- [ ] T052 [US5] Add standardized error taxonomy (INVALID_PROJECT, EMBEDDING_MISMATCH, HYBRID_NOT_SUPPORTED, INDEX_UNAVAILABLE, TIMEOUT) in src/infrastructure/mcp/tools.py
-- [ ] T053 [US5] Add text trimming to max_chars_per_chunk (1,800 chars) in all query tool responses in src/infrastructure/mcp/tools.py
-- [ ] T054 [US5] Add correlation IDs to all MCP tool responses in src/infrastructure/mcp/tools.py
-- [ ] T055 [US5] Add server-side project filtering enforcement in all MCP query tools in src/infrastructure/mcp/tools.py
-- [ ] T056 [US5] Add per-tool timeout enforcement (8-15s depending on operation) in src/infrastructure/mcp/tools.py
-- [ ] T057 [US5] Update CLI to expose mcp-server command in src/infrastructure/cli/main.py
+- [X] T046 [US5] Create FastMCP server setup in src/infrastructure/mcp/server.py with stdio transport
+- [X] T047 [US5] Implement ingest_from_source tool in src/infrastructure/mcp/tools.py with 15s timeout and correlation ID support
+- [X] T048 [US5] Implement query tool in src/infrastructure/mcp/tools.py with 8s timeout for dense-only search
+- [X] T049 [US5] Implement query_hybrid tool in src/infrastructure/mcp/tools.py with 15s timeout for hybrid search
+- [X] T050 [US5] Implement inspect_collection tool in src/infrastructure/mcp/tools.py with 5s timeout showing collection stats and model bindings
+- [X] T051 [US5] Implement list_projects tool in src/infrastructure/mcp/tools.py (no timeout, fast enumeration)
+- [X] T052 [US5] Add standardized error taxonomy (INVALID_PROJECT, EMBEDDING_MISMATCH, HYBRID_NOT_SUPPORTED, INDEX_UNAVAILABLE, TIMEOUT) in src/infrastructure/mcp/tools.py
+- [X] T053 [US5] Add text trimming to max_chars_per_chunk (1,800 chars) in all query tool responses in src/infrastructure/mcp/tools.py
+- [X] T054 [US5] Add correlation IDs to all MCP tool responses in src/infrastructure/mcp/tools.py
+- [X] T055 [US5] Add server-side project filtering enforcement in all MCP query tools in src/infrastructure/mcp/tools.py
+- [X] T056 [US5] Add per-tool timeout enforcement (8-15s depending on operation) in src/infrastructure/mcp/tools.py
+- [X] T057 [US5] Update CLI to expose mcp-server command in src/infrastructure/cli/main.py
 
 **Checkpoint**: At this point, User Stories 1-5 should all work independently
 
