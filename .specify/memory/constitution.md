@@ -294,7 +294,7 @@ Operating Procedure (Humans & Agents)
   - `DoclingHybridChunkerAdapter`: Placeholder returning `Chunk` objects with deterministic IDs (full Docling integration requires Windows support/WSL)
   - `FastEmbedAdapter`: Enhanced with `model_id` property and batch embedding support (384-dim vectors for MiniLM)
   - `QdrantIndexAdapter`: Implemented with per-project collections, write-guard for embedding model consistency, payload indexes, exponential backoff retry logic (3 retries: 1s, 2s, 4s delays)
-  - `ZoteroCslJsonResolver`: Enhanced with DOI-first matching, normalized title fallback, fuzzy scoring, proper CSL-JSON parsing
+  - `ZoteroCslJsonResolver`: Initial implementation with DOI-first matching, normalized title fallback, fuzzy scoring, proper CSL-JSON parsing
 - **CLI**:
   - Implemented `ingest` command with project, source_path, references_path, embedding_model options
   - Wired to `IngestDocument` use case with full error handling
@@ -307,6 +307,41 @@ Operating Procedure (Humans & Agents)
 - **Quality**: All tests pass (14/14), code follows Clean Architecture, proper error handling, graceful fallbacks for unavailable services
 - **Status**: MVP complete - Can ingest documents and store chunks independently with full audit trail
 
+**Phase 4: User Story 2 - Enrich Chunks with Citation Metadata** — ✅ Complete (2025-01-27)
+- **Application Layer**:
+  - Enhanced `IngestDocument` use case to extract source hints from conversion results and file paths
+  - Extracts DOI from document structure metadata (if available in conversion result)
+  - Falls back to title hint from source file path (basename without extension)
+  - Resolves metadata once per document (before chunk loop) and attaches `CitationMeta` to all chunks
+  - Improved error handling and variable scope management
+  - Added structured logging for successful metadata resolution with citekey
+- **Infrastructure Adapters**:
+  - Enhanced `ZoteroCslJsonResolver` with robust DOI-first matching:
+    - Handles multiple DOI formats: `doi:10.1234/example`, `https://doi.org/10.1234/example`, direct `10.1234/example`
+    - Normalizes DOIs by removing URL prefixes, lowercasing, and stripping whitespace for consistent matching
+    - Exact match or substring matching for flexible DOI resolution
+  - Improved normalized title fallback:
+    - Uses Jaccard similarity on normalized word sets for fuzzy matching
+    - Configurable fuzzy threshold (default 0.8) to balance precision and recall
+    - Normalizes titles by lowercasing, removing punctuation, collapsing whitespace
+  - Enhanced `MetadataMissing` logging:
+    - Non-blocking warnings with actionable hints (suggests checking references file, adding DOI/citekey/title)
+    - Structured logging with correlation IDs, doc_id, references_path, and source_hint for debugging
+    - Logs match method (DOI, title, citekey) with confidence scores when applicable
+- **Tests**:
+  - Created comprehensive integration test suite (`tests/integration/test_zotero_metadata.py`) - 10 tests covering:
+    - DOI matching (exact and normalized URL formats)
+    - Title fallback matching with fuzzy similarity (Jaccard score threshold)
+    - Citekey matching
+    - Unknown document handling (graceful None return)
+    - Missing references file handling (non-blocking)
+    - Author extraction from CSL-JSON format (handles both dict and string formats)
+    - Tags and collections extraction
+    - Fuzzy threshold validation (low similarity titles correctly rejected)
+    - URL fallback for items without DOI (ensures either DOI or URL present)
+- **Quality**: All 10 integration tests pass, no linter errors, follows Clean Architecture principles
+- **Status**: User Story 2 complete - Chunks are automatically enriched with citation metadata from Zotero CSL-JSON exports using DOI-first matching with normalized title fallback
+
 ---
 
-**Version**: 1.5.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-01-27 (Phase 3 completion - MVP ingest capability)
+**Version**: 1.6.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-01-27 (Phase 4 completion - Citation metadata enrichment)
