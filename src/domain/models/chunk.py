@@ -62,6 +62,8 @@ class Chunk:
         section_heading: Immediate section heading containing this chunk (optional)
         section_path: Hierarchical section path (breadcrumb from root to current section)
         chunk_idx: Sequential chunk index within document
+        token_count: Token count according to embedding model's tokenizer (optional)
+        signal_to_noise_ratio: Quality metric (≥ 0.3 threshold) (optional)
     """
     
     id: str
@@ -71,6 +73,8 @@ class Chunk:
     section_heading: str | None = None
     section_path: list[str] = field(default_factory=list)
     chunk_idx: int = 0
+    token_count: int | None = None
+    signal_to_noise_ratio: float | None = None
     
     def __post_init__(self) -> None:
         """Validate chunk data."""
@@ -78,4 +82,8 @@ class Chunk:
             raise ValueError(f"Invalid page span: start ({self.page_span[0]}) > end ({self.page_span[1]})")
         if self.chunk_idx < 0:
             raise ValueError(f"chunk_idx must be >= 0, got {self.chunk_idx}")
+        if self.signal_to_noise_ratio is not None and self.signal_to_noise_ratio < 0.0:
+            raise ValueError(
+                f"signal_to_noise_ratio must be >= 0.0 if provided, got {self.signal_to_noise_ratio}"
+            )
 

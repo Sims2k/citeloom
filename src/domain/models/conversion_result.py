@@ -11,11 +11,13 @@ class ConversionResult:
         doc_id: Stable document identifier (content hash or file path hash)
         structure: Document structure with heading_tree and page_map
         plain_text: Converted plain text content (optional)
+        ocr_languages: OCR languages used during conversion (if OCR was performed) (optional)
     """
     
     doc_id: str
     structure: dict[str, Any]
     plain_text: str | None = None
+    ocr_languages: list[str] | None = None
     
     def __post_init__(self) -> None:
         """Validate structure contains required keys."""

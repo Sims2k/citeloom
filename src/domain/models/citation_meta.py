@@ -15,6 +15,7 @@ class CitationMeta:
         url: URL if DOI not available (optional)
         tags: Tags from Zotero collection
         collections: Collection names from Zotero
+        language: Language code from Zotero metadata (e.g., 'en', 'de', 'en-US') - used for OCR language selection (optional)
     """
     
     citekey: str
@@ -25,6 +26,7 @@ class CitationMeta:
     url: str | None = None
     tags: list[str] = field(default_factory=list)
     collections: list[str] = field(default_factory=list)
+    language: str | None = None
     
     def __post_init__(self) -> None:
         """Validate citation metadata."""

@@ -6,6 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from .environment import get_env, load_environment_variables
+
 
 class ChunkingSettings(BaseModel):
     """Chunking configuration settings."""
@@ -23,6 +25,27 @@ class QdrantSettings(BaseModel):
     api_key: str = ""
     timeout_ms: int = 15000
     create_fulltext_index: bool = True
+    
+    def __init__(self, **data: Any) -> None:
+        """Initialize with environment variable precedence."""
+        # Ensure environment is loaded
+        load_environment_variables()
+        
+        # Override with environment variables if present (system env > .env > defaults)
+        # Environment variables take precedence over TOML values
+        env_api_key = get_env("QDRANT_API_KEY")
+        if env_api_key is not None:
+            data["api_key"] = env_api_key
+        elif "api_key" not in data:
+            data["api_key"] = ""
+        
+        env_url = get_env("QDRANT_URL")
+        if env_url is not None:
+            data["url"] = env_url
+        elif "url" not in data:
+            data["url"] = "http://localhost:6333"
+        
+        super().__init__(**data)
 
 
 class PathsSettings(BaseModel):
@@ -60,7 +83,9 @@ class Settings(BaseModel):
     @classmethod
     def from_toml(cls, toml_path: Path | str = "citeloom.toml") -> "Settings":
         """
-        Load settings from citeloom.toml file.
+        Load settings from citeloom.toml file with environment variable precedence.
+        
+        Environment variables (system env > .env file) override TOML values.
         
         Args:
             toml_path: Path to citeloom.toml file
@@ -68,6 +93,9 @@ class Settings(BaseModel):
         Returns:
             Settings instance with loaded configuration
         """
+        # Load environment variables first (respects precedence: system env > .env)
+        load_environment_variables()
+        
         toml_path = Path(toml_path)
         
         if not toml_path.exists():

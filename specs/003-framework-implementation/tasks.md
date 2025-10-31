@@ -15,10 +15,10 @@
 
 **Purpose**: Project initialization and dependency setup
 
-- [ ] T001 Create fastmcp.json configuration file in project root with dependencies, transport, and entrypoint
-- [ ] T002 Add python-dotenv dependency via `uv add python-dotenv` for .env file support
-- [ ] T003 [P] Update .gitignore to exclude .env files from version control
-- [ ] T004 [P] Verify existing project structure matches plan.md (src/domain, src/application, src/infrastructure)
+- [X] T001 Create fastmcp.json configuration file in project root with dependencies, transport, and entrypoint
+- [X] T002 Add python-dotenv dependency via `uv add python-dotenv` for .env file support
+- [X] T003 [P] Update .gitignore to exclude .env files from version control
+- [X] T004 [P] Verify existing project structure matches plan.md (src/domain, src/application, src/infrastructure)
 
 ---
 
@@ -28,12 +28,12 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T005 Implement environment variable loading from .env file in src/infrastructure/config/environment.py
-- [ ] T006 [P] Update Settings class in src/infrastructure/config/settings.py to load environment variables with precedence (system env > .env)
-- [ ] T007 [P] Update CitationMeta domain model in src/domain/models/citation_meta.py to include language field (optional)
-- [ ] T008 [P] Update Chunk domain model in src/domain/models/chunk.py to include token_count and signal_to_noise_ratio fields (optional)
-- [ ] T009 [P] Update ConversionResult domain model in src/domain/models/conversion_result.py to include ocr_languages field (optional)
-- [ ] T010 Update ChunkingPolicy in src/domain/policy/chunking_policy.py to include min_chunk_length and min_signal_to_noise fields
+- [X] T005 Implement environment variable loading from .env file in src/infrastructure/config/environment.py
+- [X] T006 [P] Update Settings class in src/infrastructure/config/settings.py to load environment variables with precedence (system env > .env)
+- [X] T007 [P] Update CitationMeta domain model in src/domain/models/citation_meta.py to include language field (optional)
+- [X] T008 [P] Update Chunk domain model in src/domain/models/chunk.py to include token_count and signal_to_noise_ratio fields (optional)
+- [X] T009 [P] Update ConversionResult domain model in src/domain/models/conversion_result.py to include ocr_languages field (optional)
+- [X] T010 Update ChunkingPolicy in src/domain/policy/chunking_policy.py to include min_chunk_length and min_signal_to_noise fields
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -154,18 +154,24 @@
 
 ---
 
-## Phase 8: User Story 6 - Robust Citation Metadata Resolution (Priority: P2)
+## Phase 8: User Story 6 - Robust Citation Metadata Resolution via pyzotero (Priority: P2)
 
-**Goal**: Enhance Zotero metadata resolution to extract language field for OCR and improve matching reliability. Metadata resolution is robust and handles missing data gracefully.
+**Goal**: Implement Zotero metadata resolution using pyzotero API with Better BibTeX citekey extraction and language field extraction for OCR. Metadata resolution is robust and handles missing data gracefully.
 
-**Independent Test**: Can be fully tested by ingesting documents with corresponding reference entries and verifying that at least 95% match successfully using DOI-first then title-based matching, that unresolved documents are logged but still ingested, and that metadata (citekey, tags, collections, language) is correctly stored in chunk payloads.
+**Independent Test**: Can be fully tested by ingesting documents with corresponding Zotero library entries and verifying that at least 95% match successfully using DOI-first then title-based matching, that unresolved documents are logged but still ingested, and that metadata (citekey from Better BibTeX, tags, collections, language) is correctly stored in chunk payloads.
 
 ### Implementation for User Story 6
 
-- [ ] T058 [US6] Update ZoteroCslJsonResolver.resolve() in src/infrastructure/adapters/zotero_metadata.py to extract language field from Zotero CSL-JSON
-- [ ] T059 [US6] Add language field mapping (Zotero codes → OCR language codes) in src/infrastructure/adapters/zotero_metadata.py
-- [ ] T060 [US6] Pass language from metadata to converter for OCR language selection in src/application/use_cases/ingest_document.py
-- [ ] T061 [US6] Update MetadataResolverPort protocol in src/application/ports/metadata_resolver.py to document language field extraction
+- [ ] T068 [US6] Add pyzotero dependency via `uv add pyzotero` for Zotero API access
+- [ ] T069 [US6] Replace ZoteroCslJsonResolver with ZoteroPyzoteroResolver in src/infrastructure/adapters/zotero_metadata.py implementing pyzotero client initialization (library_id, library_type, api_key for remote, or local=True for local access)
+- [ ] T070 [US6] Implement Better BibTeX JSON-RPC client in src/infrastructure/adapters/zotero_metadata.py with port availability check (port 23119 for Zotero, 24119 for Juris-M) with timeout (5-10s), detecting if Better BibTeX is running before attempting item.citationkey method calls
+- [ ] T071 [US6] Add Better BibTeX citekey extraction fallback parsing item['data']['extra'] field for "Citation Key: citekey" pattern in src/infrastructure/adapters/zotero_metadata.py
+- [ ] T072 [US6] Implement pyzotero item search by DOI (exact match, normalized) then by title (normalized, fuzzy threshold ≥ 0.8) in src/infrastructure/adapters/zotero_metadata.py
+- [ ] T073 [US6] Extract metadata fields from pyzotero item response (title, creators → authors, year from date, DOI, URL, tags, collections, language) in src/infrastructure/adapters/zotero_metadata.py
+- [ ] T074 [US6] Add language field mapping (Zotero codes → OCR language codes, e.g., 'en-US' → 'en') in src/infrastructure/adapters/zotero_metadata.py
+- [ ] T075 [US6] Pass language from metadata to converter for OCR language selection in src/application/use_cases/ingest_document.py
+- [ ] T076 [US6] Update MetadataResolverPort protocol in src/application/ports/metadata_resolver.py to replace references_path parameter with zotero_config (optional dict) and document pyzotero usage
+- [ ] T077 [US6] Add graceful error handling for pyzotero API connection failures and Better BibTeX JSON-RPC unavailability in src/infrastructure/adapters/zotero_metadata.py (non-blocking, returns None, logs MetadataMissing)
 
 **Checkpoint**: At this point, User Stories 1-6 should all work independently
 
@@ -175,7 +181,7 @@
 
 **Goal**: Implement validate and inspect CLI commands for configuration validation and collection inspection. System provides operational visibility and catches errors before data corruption.
 
-**Independent Test**: Can be fully tested by running validate and inspect commands on a configured project and verifying that validation checks tokenizer-to-embedding alignment, vector database connectivity, collection presence, model lock verification, payload indexes, and reference file presence, while inspect shows collection statistics and sample data.
+**Independent Test**: Can be fully tested by running validate and inspect commands on a configured project and verifying that validation checks tokenizer-to-embedding alignment, vector database connectivity, collection presence, model lock verification, payload indexes, and Zotero library connectivity (pyzotero API connection), while inspect shows collection statistics and sample data.
 
 ### Implementation for User Story 7
 
@@ -183,14 +189,14 @@
 - [ ] T063 [US7] Add vector database connectivity check in src/infrastructure/cli/commands/validate.py
 - [ ] T064 [US7] Add collection presence and model lock verification in src/infrastructure/cli/commands/validate.py
 - [ ] T065 [US7] Add payload index verification in src/infrastructure/cli/commands/validate.py
-- [ ] T066 [US7] Add reference JSON file accessibility check in src/infrastructure/cli/commands/validate.py
-- [ ] T067 [US7] Add clear error messages with actionable guidance in src/infrastructure/cli/commands/validate.py
-- [ ] T068 [US7] Implement inspect command in src/infrastructure/cli/commands/inspect.py displaying collection statistics
-- [ ] T069 [US7] Add embedding model identifier display in src/infrastructure/cli/commands/inspect.py
-- [ ] T070 [US7] Add payload schema sample display in src/infrastructure/cli/commands/inspect.py
-- [ ] T071 [US7] Add index presence confirmation in src/infrastructure/cli/commands/inspect.py
-- [ ] T072 [US7] Add optional sample chunk data display in src/infrastructure/cli/commands/inspect.py
-- [ ] T073 [US7] Register validate and inspect commands in src/infrastructure/cli/main.py
+- [ ] T067 [US7] Add Zotero library connectivity check (pyzotero API connection test) in src/infrastructure/cli/commands/validate.py
+- [ ] T068a [US7] Add clear error messages with actionable guidance in src/infrastructure/cli/commands/validate.py
+- [ ] T069 [US7] Implement inspect command in src/infrastructure/cli/commands/inspect.py displaying collection statistics
+- [ ] T070 [US7] Add embedding model identifier display in src/infrastructure/cli/commands/inspect.py
+- [ ] T071 [US7] Add payload schema sample display in src/infrastructure/cli/commands/inspect.py
+- [ ] T072 [US7] Add index presence confirmation in src/infrastructure/cli/commands/inspect.py
+- [ ] T073 [US7] Add optional sample chunk data display in src/infrastructure/cli/commands/inspect.py
+- [ ] T074 [US7] Register validate and inspect commands in src/infrastructure/cli/main.py
 
 **Checkpoint**: At this point, User Stories 1-7 should all work independently
 
@@ -204,12 +210,13 @@
 
 ### Implementation for User Story 8
 
-- [ ] T074 [US8] Add python-dotenv loading in src/infrastructure/config/environment.py with automatic .env file detection
-- [ ] T075 [US8] Implement precedence logic (system env > .env file values) in src/infrastructure/config/environment.py
-- [ ] T076 [US8] Add graceful handling of missing optional API keys (OPENAI_API_KEY) in src/infrastructure/config/environment.py with fallback to defaults
-- [ ] T077 [US8] Add clear error messages for missing required API keys (QDRANT_API_KEY when auth required) in src/infrastructure/config/environment.py
-- [ ] T078 [US8] Update Settings class to use environment-loaded values in src/infrastructure/config/settings.py
-- [ ] T079 [US8] Verify .env file is in .gitignore and document in README
+- [ ] T090 [US8] Add python-dotenv loading in src/infrastructure/config/environment.py with automatic .env file detection
+- [ ] T091 [US8] Implement precedence logic (system env > .env file values) in src/infrastructure/config/environment.py
+- [ ] T092 [US8] Add graceful handling of missing optional API keys (OPENAI_API_KEY, Better BibTeX JSON-RPC when unavailable) in src/infrastructure/config/environment.py with fallback to defaults
+- [ ] T093 [US8] Add clear error messages for missing required API keys (QDRANT_API_KEY when auth required, ZOTERO_LIBRARY_ID/ZOTERO_API_KEY for remote access) in src/infrastructure/config/environment.py
+- [ ] T094 [US8] Add Zotero configuration support (ZOTERO_LIBRARY_ID, ZOTERO_LIBRARY_TYPE, ZOTERO_API_KEY, ZOTERO_LOCAL) in src/infrastructure/config/environment.py
+- [ ] T095 [US8] Update Settings class to use environment-loaded values including Zotero config in src/infrastructure/config/settings.py
+- [ ] T096 [US8] Verify .env file is in .gitignore and document Zotero configuration in README
 
 **Checkpoint**: At this point, all User Stories 1-8 should be complete
 
@@ -219,16 +226,17 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T080 [P] Add comprehensive integration tests for Docling conversion in tests/integration/test_docling_conversion.py
-- [ ] T081 [P] Add comprehensive integration tests for Qdrant named vectors and model binding in tests/integration/test_qdrant_named_vectors.py
-- [ ] T082 [P] Add comprehensive integration tests for FastMCP tools in tests/integration/test_fastmcp_tools.py
-- [ ] T083 [P] Add unit tests for environment variable loading in tests/unit/test_environment_loader.py
-- [ ] T084 [P] Enhance audit logging to include dense_model and sparse_model IDs in existing audit log implementation (complements T020a, T029a, T039a)
-- [ ] T085 Add diagnostic logging improvements for timeout/page failures in src/infrastructure/adapters/docling_converter.py
-- [ ] T086 [P] Update documentation with FastMCP configuration examples in docs/
-- [ ] T087 [P] Update documentation with environment variable configuration guide in docs/
-- [ ] T088 Code cleanup and refactoring across all adapters
-- [ ] T089 Run quickstart.md validation scenarios
+- [ ] T097 [P] Add comprehensive integration tests for Docling conversion in tests/integration/test_docling_conversion.py
+- [ ] T098 [P] Add comprehensive integration tests for Qdrant named vectors and model binding in tests/integration/test_qdrant_named_vectors.py
+- [ ] T099 [P] Add comprehensive integration tests for FastMCP tools in tests/integration/test_fastmcp_tools.py
+- [ ] T100 [P] Add integration tests for pyzotero metadata resolution and Better BibTeX citekey extraction in tests/integration/test_zotero_metadata.py
+- [ ] T101 [P] Add unit tests for environment variable loading in tests/unit/test_environment_loader.py
+- [ ] T102 [P] Enhance audit logging to include dense_model and sparse_model IDs in existing audit log implementation (complements T020a, T029a, T039a)
+- [ ] T103 Add diagnostic logging improvements for timeout/page failures in src/infrastructure/adapters/docling_converter.py
+- [ ] T104 [P] Update documentation with FastMCP configuration examples in docs/
+- [ ] T105 [P] Update documentation with environment variable configuration guide including Zotero setup in docs/
+- [ ] T106 Code cleanup and refactoring across all adapters
+- [ ] T107 Run quickstart.md validation scenarios
 
 ---
 
@@ -362,7 +370,7 @@ With multiple developers:
 
 ## Summary
 
-- **Total Tasks**: 92 tasks across 11 phases
+- **Total Tasks**: 107 tasks across 11 phases
 - **Task Count by Phase**:
   - Phase 1 (Setup): 4 tasks
   - Phase 2 (Foundational): 6 tasks
@@ -371,10 +379,10 @@ With multiple developers:
   - Phase 5 (US3 - Vector Storage): 11 tasks (includes T039a audit logging)
   - Phase 6 (US4 - Hybrid Search): 6 tasks
   - Phase 7 (US5 - MCP Tools): 12 tasks
-  - Phase 8 (US6 - Metadata Resolution): 4 tasks
+  - Phase 8 (US6 - Metadata Resolution via pyzotero): 10 tasks
   - Phase 9 (US7 - Validation/Inspection): 12 tasks
-  - Phase 10 (US8 - Environment Config): 6 tasks
-  - Phase 11 (Polish): 10 tasks
+  - Phase 10 (US8 - Environment Config): 7 tasks
+  - Phase 11 (Polish): 11 tasks
 
 - **Parallel Opportunities**: 28 tasks marked [P] for parallel execution
 - **MVP Scope**: User Stories 1, 2, 3 (P1 stories) = 29 tasks
