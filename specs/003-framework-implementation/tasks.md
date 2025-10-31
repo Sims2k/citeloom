@@ -185,18 +185,18 @@
 
 ### Implementation for User Story 7
 
-- [ ] T062 [US7] Implement validate command in src/infrastructure/cli/commands/validate.py checking tokenizer-to-embedding alignment
-- [ ] T063 [US7] Add vector database connectivity check in src/infrastructure/cli/commands/validate.py
-- [ ] T064 [US7] Add collection presence and model lock verification in src/infrastructure/cli/commands/validate.py
-- [ ] T065 [US7] Add payload index verification in src/infrastructure/cli/commands/validate.py
-- [ ] T067 [US7] Add Zotero library connectivity check (pyzotero API connection test) in src/infrastructure/cli/commands/validate.py
-- [ ] T068a [US7] Add clear error messages with actionable guidance in src/infrastructure/cli/commands/validate.py
-- [ ] T069 [US7] Implement inspect command in src/infrastructure/cli/commands/inspect.py displaying collection statistics
-- [ ] T070 [US7] Add embedding model identifier display in src/infrastructure/cli/commands/inspect.py
-- [ ] T071 [US7] Add payload schema sample display in src/infrastructure/cli/commands/inspect.py
-- [ ] T072 [US7] Add index presence confirmation in src/infrastructure/cli/commands/inspect.py
-- [ ] T073 [US7] Add optional sample chunk data display in src/infrastructure/cli/commands/inspect.py
-- [ ] T074 [US7] Register validate and inspect commands in src/infrastructure/cli/main.py
+- [X] T062 [US7] Implement validate command in src/infrastructure/cli/commands/validate.py checking tokenizer-to-embedding alignment
+- [X] T063 [US7] Add vector database connectivity check in src/infrastructure/cli/commands/validate.py
+- [X] T064 [US7] Add collection presence and model lock verification in src/infrastructure/cli/commands/validate.py
+- [X] T065 [US7] Add payload index verification in src/infrastructure/cli/commands/validate.py
+- [X] T067 [US7] Add Zotero library connectivity check (pyzotero API connection test) in src/infrastructure/cli/commands/validate.py
+- [X] T068a [US7] Add clear error messages with actionable guidance in src/infrastructure/cli/commands/validate.py
+- [X] T069 [US7] Implement inspect command in src/infrastructure/cli/commands/inspect.py displaying collection statistics
+- [X] T070 [US7] Add embedding model identifier display in src/infrastructure/cli/commands/inspect.py
+- [X] T071 [US7] Add payload schema sample display in src/infrastructure/cli/commands/inspect.py
+- [X] T072 [US7] Add index presence confirmation in src/infrastructure/cli/commands/inspect.py
+- [X] T073 [US7] Add optional sample chunk data display in src/infrastructure/cli/commands/inspect.py
+- [X] T074 [US7] Register validate and inspect commands in src/infrastructure/cli/main.py
 
 **Checkpoint**: At this point, User Stories 1-7 should all work independently
 

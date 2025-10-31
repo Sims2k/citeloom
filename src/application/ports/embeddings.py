@@ -10,6 +10,11 @@ class EmbeddingPort(Protocol):
         """Return the embedding model identifier (e.g., 'fastembed/all-MiniLM-L6-v2')."""
         ...
     
+    @property
+    def tokenizer_family(self) -> str:
+        """Return the tokenizer family identifier (e.g., 'minilm', 'bge') for alignment validation."""
+        ...
+    
     def embed(self, texts: list[str], model_id: str | None = None) -> list[list[float]]:
         """
         Generate embeddings for a list of texts.
