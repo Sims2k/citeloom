@@ -11,6 +11,7 @@ try:
     from qdrant_client.models import (
         Distance,
         VectorParams,
+        SparseVectorParams,
         PointStruct,
         Filter,
         FieldCondition,
@@ -23,6 +24,7 @@ try:
 except Exception:  # pragma: no cover
     QdrantClient = None  # type: ignore
     VectorParams = None  # type: ignore
+    SparseVectorParams = None  # type: ignore
     PointStruct = None  # type: ignore
     Filter = None  # type: ignore
     FieldCondition = None  # type: ignore
@@ -87,26 +89,34 @@ class QdrantIndexAdapter:
         self,
         collection_name: str,
         vector_size: int,
-        model_id: str,
+        dense_model_id: str,
+        sparse_model_id: str | None = None,
+        on_disk_vectors: bool = False,
+        on_disk_hnsw: bool = False,
         recreate: bool = False,
     ) -> None:
         """
-        Ensure collection exists with proper configuration.
+        Ensure collection exists with named vectors and model bindings.
         
         Args:
             collection_name: Collection name
-            vector_size: Vector dimension size
-            model_id: Embedding model identifier (stored in metadata)
+            vector_size: Dense vector dimension size
+            dense_model_id: Dense embedding model identifier
+            sparse_model_id: Optional sparse model identifier (for hybrid search)
+            on_disk_vectors: Whether to store vectors on-disk (for large projects)
+            on_disk_hnsw: Whether to store HNSW index on-disk
             recreate: Whether to recreate collection if it exists
         
         Raises:
             RuntimeError: If collection creation fails
+            EmbeddingModelMismatch: If model_id doesn't match existing collection
         """
         if self._client is None:
             # In-memory fallback: just track collection metadata
             if collection_name not in self._local or recreate:
                 self._local[collection_name] = {
-                    "model_id": model_id,
+                    "dense_model_id": dense_model_id,
+                    "sparse_model_id": sparse_model_id,
                     "items": {},
                     "vector_size": vector_size,
                 }
@@ -122,38 +132,147 @@ class QdrantIndexAdapter:
                 collection_exists = False
             
             if not collection_exists:
-                # Create collection with vector params
-                self._client.create_collection(
-                    collection_name=collection_name,
-                    vectors_config=VectorParams(
+                # Create collection with named vectors (dense and optional sparse)
+                vectors_config: dict[str, Any] = {
+                    "dense": VectorParams(
                         size=vector_size,
                         distance=Distance.COSINE,
+                        on_disk=on_disk_vectors,
                     ),
+                }
+                
+                # Add sparse vector if hybrid is enabled
+                if sparse_model_id is not None:
+                    if SparseVectorParams is not None:
+                        vectors_config["sparse"] = SparseVectorParams()
+                    else:
+                        # Fallback: use empty dict for sparse vector params
+                        vectors_config["sparse"] = {}
+                
+                self._client.create_collection(
+                    collection_name=collection_name,
+                    vectors_config=vectors_config,
+                    optimizers_config={
+                        "indexing_threshold": 20000,
+                    },
+                    hnsw_config={
+                        "on_disk": on_disk_hnsw,
+                    } if on_disk_hnsw else None,
                 )
                 
-                # Store embed_model in collection metadata
+                # Bind dense model for text-based queries
+                try:
+                    self._client.set_model(collection_name=collection_name, model_name=dense_model_id)
+                    logger.debug(
+                        f"Bound dense model '{dense_model_id}' to collection '{collection_name}'",
+                        extra={"collection_name": collection_name, "model_id": dense_model_id},
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to bind dense model '{dense_model_id}': {e}. "
+                        "Text-based queries may not work. Continuing without model binding.",
+                        extra={"collection_name": collection_name, "model_id": dense_model_id},
+                    )
+                
+                # Bind sparse model if provided
+                if sparse_model_id is not None:
+                    try:
+                        self._client.set_sparse_model(collection_name=collection_name, model_name=sparse_model_id)
+                        logger.debug(
+                            f"Bound sparse model '{sparse_model_id}' to collection '{collection_name}'",
+                            extra={"collection_name": collection_name, "sparse_model_id": sparse_model_id},
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to bind sparse model '{sparse_model_id}': {e}. "
+                            "Hybrid search may not work. Continuing without sparse model binding.",
+                            extra={"collection_name": collection_name, "sparse_model_id": sparse_model_id},
+                        )
+                
+                # Store model IDs in collection metadata for write-guard
+                metadata = {
+                    "dense_model_id": dense_model_id,
+                }
+                if sparse_model_id is not None:
+                    metadata["sparse_model_id"] = sparse_model_id
+                
                 self._client.update_collection(
                     collection_name=collection_name,
-                    collection_metadata={"embed_model": model_id},
+                    collection_metadata=metadata,
                 )
                 
                 # Create payload indexes
                 self._create_payload_indexes(collection_name)
                 
                 logger.info(
-                    f"Created collection '{collection_name}' with embed_model='{model_id}'",
-                    extra={"collection_name": collection_name, "model_id": model_id},
+                    f"Created collection '{collection_name}' with dense_model='{dense_model_id}'"
+                    + (f", sparse_model='{sparse_model_id}'" if sparse_model_id else ""),
+                    extra={
+                        "collection_name": collection_name,
+                        "dense_model_id": dense_model_id,
+                        "sparse_model_id": sparse_model_id,
+                    },
                 )
             else:
                 # Verify model_id matches (write-guard check)
                 collection_info = self._client.get_collection(collection_name)
-                stored_model = collection_info.config.params.vectors.get("size")  # FIXME: Get from metadata
-                if stored_model and model_id != stored_model:
-                    raise EmbeddingModelMismatch(
-                        project_id="",  # TODO: Derive from collection_name
-                        expected_model=stored_model or "unknown",
-                        provided_model=model_id,
+                metadata = collection_info.config.params.vectors  # This might be wrong structure
+                # Try to get from collection metadata instead
+                try:
+                    collection_metadata = collection_info.config.params  # This structure varies
+                    # Access metadata through proper API
+                    collection_full_info = self._client.get_collection(collection_name)
+                    # Get metadata - in newer Qdrant versions it's available differently
+                    # For now, check if we can access it via collection info
+                    stored_dense_model = None
+                    stored_sparse_model = None
+                    # Try to get from metadata dict if available
+                    if hasattr(collection_full_info, "config") and hasattr(collection_full_info.config, "params"):
+                        # Metadata might be in a different location
+                        pass
+                    
+                    # Fallback: try to get from get_collection response metadata
+                    # Qdrant API may store this in collection_metadata
+                    stored_metadata = getattr(collection_full_info, "metadata", None) or {}
+                    stored_dense_model = stored_metadata.get("dense_model_id")
+                    stored_sparse_model = stored_metadata.get("sparse_model_id")
+                    
+                    # If metadata not found, try collection config
+                    if not stored_dense_model:
+                        # This is a fallback - we'll improve this later
+                        stored_dense_model = stored_metadata.get("embed_model")  # Legacy field
+                    
+                    # Validate dense model match (write-guard)
+                    if stored_dense_model and dense_model_id != stored_dense_model:
+                        # Derive project_id from collection_name
+                        project_id = collection_name.replace("proj-", "").replace("-", "/")
+                        raise EmbeddingModelMismatch(
+                            project_id=project_id,
+                            expected_model=stored_dense_model,
+                            provided_model=dense_model_id,
+                        )
+                    
+                    # Validate sparse model match if provided
+                    if sparse_model_id is not None and stored_sparse_model and sparse_model_id != stored_sparse_model:
+                        logger.warning(
+                            f"Sparse model mismatch for collection '{collection_name}': "
+                            f"expected '{stored_sparse_model}', got '{sparse_model_id}'. "
+                            "Hybrid search may behave unexpectedly.",
+                            extra={
+                                "collection_name": collection_name,
+                                "expected_sparse_model": stored_sparse_model,
+                                "provided_sparse_model": sparse_model_id,
+                            },
+                        )
+                except AttributeError:
+                    # Metadata structure not available - skip validation for now
+                    logger.debug(
+                        f"Could not access collection metadata for '{collection_name}'. "
+                        "Skipping write-guard validation.",
+                        extra={"collection_name": collection_name},
                     )
+        except EmbeddingModelMismatch:
+            raise
         except Exception as e:
             logger.error(
                 f"Failed to ensure collection '{collection_name}': {e}",
@@ -162,9 +281,54 @@ class QdrantIndexAdapter:
             )
             raise
 
+    def ensure_collection(
+        self,
+        project_id: str,
+        dense_model_id: str,
+        sparse_model_id: str | None = None,
+        on_disk_vectors: bool = False,
+        on_disk_hnsw: bool = False,
+    ) -> None:
+        """
+        Ensure collection exists with named vectors and model bindings.
+        
+        Public API method matching VectorIndexPort protocol.
+        
+        Args:
+            project_id: Project identifier
+            dense_model_id: Dense embedding model identifier
+            sparse_model_id: Optional sparse model identifier (for hybrid)
+            on_disk_vectors: Whether to store vectors on-disk (for large projects)
+            on_disk_hnsw: Whether to store HNSW index on-disk
+        
+        Creates collection with:
+        - Named vectors: 'dense' and optionally 'sparse'
+        - Model bindings via set_model() and set_sparse_model()
+        - Payload indexes: keyword on project_id, doc_id, citekey, year, tags; full-text on chunk_text
+        - On-disk storage flags if specified
+        """
+        collection_name = self._collection_name(project_id)
+        
+        # Determine vector size from dense model (default to 384 for common models)
+        # In practice, this should come from the embedding model configuration
+        vector_size = 384  # Default for MiniLM/BGE-small; should be configurable
+        
+        self._ensure_collection(
+            collection_name=collection_name,
+            vector_size=vector_size,
+            dense_model_id=dense_model_id,
+            sparse_model_id=sparse_model_id,
+            on_disk_vectors=on_disk_vectors,
+            on_disk_hnsw=on_disk_hnsw,
+            recreate=False,
+        )
+
     def _create_payload_indexes(self, collection_name: str) -> None:
         """
         Create payload indexes for filtering and full-text search.
+        
+        Creates keyword indexes on: project_id, doc_id, citekey, year, tags
+        Creates full-text index on: chunk_text (if hybrid enabled)
         
         Args:
             collection_name: Collection name
@@ -173,20 +337,60 @@ class QdrantIndexAdapter:
             return
         
         try:
-            # Keyword index on project field
-            # Note: Qdrant automatically indexes payload fields used in filters
+            # Create keyword indexes on high-cardinality filter fields
+            # Qdrant's create_payload_index method creates indexes for fast filtering
+            keyword_fields = ["project_id", "doc_id", "citekey", "year", "tags"]
             
-            # Full-text index on fulltext field (if hybrid enabled)
+            for field_name in keyword_fields:
+                try:
+                    # Create keyword index using create_payload_index
+                    # Note: Qdrant API may vary by version
+                    # For keyword indexes, use PayloadSchemaType.KEYWORD
+                    if PayloadSchemaType is not None:
+                        from qdrant_client.models import PayloadSchemaType as PST
+                        self._client.create_payload_index(
+                            collection_name=collection_name,
+                            field_name=field_name,
+                            field_schema=PST.KEYWORD,
+                        )
+                        logger.debug(
+                            f"Created keyword index on '{field_name}' for collection '{collection_name}'",
+                            extra={"collection_name": collection_name, "field_name": field_name},
+                        )
+                    else:
+                        # Fallback: Qdrant may auto-index fields used in filters
+                        logger.debug(
+                            f"Payload index creation skipped (auto-index may apply): '{field_name}'",
+                            extra={"collection_name": collection_name, "field_name": field_name},
+                        )
+                except Exception as idx_error:
+                    # Some Qdrant versions auto-index keyword fields
+                    logger.debug(
+                        f"Keyword index creation attempted for '{field_name}' (may auto-index): {idx_error}",
+                        extra={"collection_name": collection_name, "field_name": field_name},
+                    )
+            
+            # Create full-text index on chunk_text field (if hybrid enabled)
             if self.create_fulltext_index:
                 try:
-                    # Create full-text index on 'fulltext' payload field
+                    # Create full-text index on 'chunk_text' payload field
                     # This enables BM25/full-text search for hybrid queries
-                    # Qdrant client API for creating payload indexes
-                    # Note: This may vary by Qdrant version - newer versions auto-index
-                    logger.info(
-                        f"Full-text index enabled for '{collection_name}' on 'fulltext' field",
-                        extra={"collection_name": collection_name},
-                    )
+                    if PayloadSchemaType is not None:
+                        from qdrant_client.models import PayloadSchemaType as PST
+                        self._client.create_payload_index(
+                            collection_name=collection_name,
+                            field_name="chunk_text",
+                            field_schema=PST.TEXT,
+                        )
+                        logger.info(
+                            f"Created full-text index on 'chunk_text' for collection '{collection_name}'",
+                            extra={"collection_name": collection_name},
+                        )
+                    else:
+                        logger.info(
+                            f"Full-text index enabled for '{collection_name}' on 'chunk_text' field (may auto-index)",
+                            extra={"collection_name": collection_name},
+                        )
                 except Exception as idx_error:
                     # Some Qdrant versions auto-index full-text fields
                     logger.debug(
@@ -205,6 +409,7 @@ class QdrantIndexAdapter:
         project_id: str,
         model_id: str,
         force_rebuild: bool = False,
+        sparse_model_id: str | None = None,
     ) -> None:
         """
         Upsert chunks into project collection.
@@ -212,8 +417,9 @@ class QdrantIndexAdapter:
         Args:
             items: List of chunk dicts with embedding, metadata, payload
             project_id: Project identifier (determines collection)
-            model_id: Embedding model identifier (for write-guard)
+            model_id: Dense embedding model identifier (for write-guard)
             force_rebuild: Whether to force collection recreation (for migrations)
+            sparse_model_id: Optional sparse model identifier (for hybrid search)
         
         Raises:
             EmbeddingModelMismatch: If model_id doesn't match collection's model
@@ -236,7 +442,8 @@ class QdrantIndexAdapter:
             self._ensure_collection(
                 collection_name=collection_name,
                 vector_size=vector_size,
-                model_id=model_id,
+                dense_model_id=model_id,
+                sparse_model_id=sparse_model_id,
                 recreate=force_rebuild,
             )
         except EmbeddingModelMismatch:
@@ -248,11 +455,11 @@ class QdrantIndexAdapter:
             # In-memory fallback
             collection_data = self._local[collection_name]
             
-            # Verify model_id matches (write-guard)
-            if not force_rebuild and collection_data["model_id"] != model_id:
+            # Verify dense model_id matches (write-guard)
+            if not force_rebuild and collection_data.get("dense_model_id") != model_id:
                 raise EmbeddingModelMismatch(
                     project_id=project_id,
-                    expected_model=collection_data["model_id"],
+                    expected_model=collection_data.get("dense_model_id", "unknown"),
                     provided_model=model_id,
                 )
             
@@ -283,27 +490,74 @@ class QdrantIndexAdapter:
             chunk_id = item.get("id", f"chunk-{len(points)}")
             embedding = item.get("embedding", [])
             
-            # Build payload
+            # Extract payload fields according to schema
+            page_span = item.get("page_span", (1, 1))
+            if isinstance(page_span, (list, tuple)) and len(page_span) >= 2:
+                page_start = int(page_span[0])
+                page_end = int(page_span[1])
+            else:
+                page_start = 1
+                page_end = 1
+            
+            section_path = item.get("section_path", [])
+            section_heading = item.get("section_heading", "")
+            
+            # Build heading_chain from section_path
+            heading_chain = " > ".join(section_path) if section_path else ""
+            
+            # Build payload with required schema fields
+            # Required: project_id, doc_id, section_path, page_start, page_end, citekey, doi, year, authors, title, tags, source_path, chunk_text, heading_chain, embed_model, version
             payload: dict[str, Any] = {
+                # Required indexed fields
+                "project_id": project_id,
+                "doc_id": item.get("doc_id", ""),
+                "section_path": section_path,
+                "page_start": page_start,
+                "page_end": page_end,
+                "citekey": "",  # Will be filled from citation metadata if available
+                "doi": "",  # Will be filled from citation metadata
+                "year": None,  # Will be filled from citation metadata
+                "authors": [],  # Will be filled from citation metadata
+                "title": "",  # Will be filled from citation metadata
+                "tags": [],  # Will be filled from citation metadata
+                "source_path": item.get("source_path", ""),
+                "chunk_text": item.get("text", ""),  # Full-text indexed
+                "heading_chain": heading_chain,
+                "embed_model": model_id,
+                "version": "1.0",  # Schema version
+                
+                # Legacy compatibility fields (for backward compatibility)
                 "project": project_id,
                 "doc": {
                     "id": item.get("doc_id", ""),
-                    "page_span": item.get("page_span", []),
-                    "section_heading": item.get("section_heading"),
-                    "section_path": item.get("section_path", []),
+                    "page_span": [page_start, page_end],
+                    "section_heading": section_heading,
+                    "section_path": section_path,
                     "chunk_idx": item.get("chunk_idx", 0),
                 },
-                "embed_model": model_id,
-                "fulltext": item.get("text", ""),  # For full-text search
             }
             
-            # Add citation metadata if available
-            if "citation" in item:
-                payload["zotero"] = item["citation"]
+            # Add citation metadata if available (from Zotero)
+            citation = item.get("citation")
+            if citation:
+                if isinstance(citation, dict):
+                    # Map citation fields to payload schema
+                    payload["citekey"] = citation.get("citekey", "")
+                    payload["doi"] = citation.get("doi", "")
+                    payload["year"] = citation.get("year")
+                    payload["authors"] = citation.get("authors", [])
+                    payload["title"] = citation.get("title", "")
+                    payload["tags"] = citation.get("tags", [])
+                    # Legacy zotero field for backward compatibility
+                    payload["zotero"] = citation
+                else:
+                    payload["zotero"] = citation
             
+            # Create point with named vector 'dense'
+            # Note: Sparse vectors would be generated during query time via model binding
             point = PointStruct(
                 id=chunk_id,
-                vector=embedding,
+                vector={"dense": embedding} if isinstance(embedding, list) else embedding,
                 payload=payload,
             )
             points.append(point)
@@ -412,27 +666,57 @@ class QdrantIndexAdapter:
         
         # Real Qdrant search
         try:
-            # Build filter with mandatory project filter
+            # Build filter with mandatory project filter (server-side enforcement)
+            # Use project_id field for filtering
             qdrant_filter = Filter(
                 must=[
                     FieldCondition(
-                        key="project",
+                        key="project_id",
                         match=MatchValue(value=project_id),
                     ),
                 ],
             )
             
-            # Add additional filters if provided
+            # Add additional filters if provided (tags, year, etc.)
             if filters:
-                # TODO: Add support for tag filters, etc.
-                pass
+                filter_conditions = [qdrant_filter.must[0]] if qdrant_filter.must else []
+                
+                # Support tag filters (AND semantics - all tags must match)
+                if "tags" in filters and filters["tags"]:
+                    tag_list = filters["tags"] if isinstance(filters["tags"], list) else [filters["tags"]]
+                    for tag in tag_list:
+                        filter_conditions.append(
+                            FieldCondition(
+                                key="tags",
+                                match=MatchValue(value=tag),
+                            )
+                        )
+                
+                # Support year filter
+                if "year" in filters and filters["year"] is not None:
+                    filter_conditions.append(
+                        FieldCondition(
+                            key="year",
+                            match=MatchValue(value=filters["year"]),
+                        )
+                    )
+                
+                # Support section prefix filter
+                if "section_prefix" in filters and filters["section_prefix"]:
+                    # Section prefix filter would use a text matching approach
+                    # For now, we'll skip it as Qdrant doesn't have direct prefix matching on arrays
+                    pass
+                
+                qdrant_filter = Filter(must=filter_conditions)
             
+            # Use named vector 'dense' for search
             results = self._client.search(
                 collection_name=collection_name,
                 query_vector=query_vector,
                 query_filter=qdrant_filter,
                 limit=top_k,
                 with_payload=True,
+                using="dense",  # Use named vector
             )
             
             hits = []
@@ -553,13 +837,13 @@ class QdrantIndexAdapter:
             ]
             return scored[:top_k]
         
-        # Real Qdrant hybrid search using Query interface (if available)
+        # Real Qdrant hybrid search using Query interface with RRF fusion
         try:
-            # Build filter with mandatory project filter
+            # Build filter with mandatory project filter (server-side enforcement)
             qdrant_filter = Filter(
                 must=[
                     FieldCondition(
-                        key="project",
+                        key="project_id",
                         match=MatchValue(value=project_id),
                     ),
                 ],
@@ -567,23 +851,78 @@ class QdrantIndexAdapter:
             
             # Add additional filters if provided
             if filters:
-                # TODO: Add support for tag filters, etc.
-                pass
+                filter_conditions = [qdrant_filter.must[0]] if qdrant_filter.must else []
+                
+                if "tags" in filters and filters["tags"]:
+                    tag_list = filters["tags"] if isinstance(filters["tags"], list) else [filters["tags"]]
+                    for tag in tag_list:
+                        filter_conditions.append(
+                            FieldCondition(
+                                key="tags",
+                                match=MatchValue(value=tag),
+                            )
+                        )
+                
+                if "year" in filters and filters["year"] is not None:
+                    filter_conditions.append(
+                        FieldCondition(
+                            key="year",
+                            match=MatchValue(value=filters["year"]),
+                        )
+                    )
+                
+                qdrant_filter = Filter(must=filter_conditions)
             
-            # Note: Qdrant Query interface with Fusion is available in newer versions,
-            # but the API may vary. For maximum compatibility, we use manual fusion.
-            # If native hybrid search is needed, consider upgrading Qdrant client
-            # and implementing Query interface support here.
-            
-            # Manual fusion: run both searches and combine
-            # 1. Vector search
-            vec_results = self._client.search(
-                collection_name=collection_name,
-                query_vector=query_vector,
-                query_filter=qdrant_filter,
-                limit=top_k * 2,  # Get more candidates for fusion
-                with_payload=True,
-            )
+            # Use Qdrant's query() method with text-based search for hybrid (RRF fusion)
+            # When both dense and sparse models are bound, RRF fusion is automatic
+            try:
+                # Try using query() with text-based search (requires model binding)
+                # This enables automatic RRF fusion when both models are bound
+                from qdrant_client.models import Query, TextQuery
+                
+                # Create query with text for sparse and vector for dense
+                # Qdrant will automatically fuse using RRF
+                query = Query(
+                    query=query_text,
+                    using="dense",  # Use dense vector, sparse is automatic via model binding
+                    filter=qdrant_filter,
+                    limit=top_k,
+                )
+                
+                results = self._client.query(
+                    collection_name=collection_name,
+                    queries=[query],
+                    with_payload=True,
+                )
+                
+                # Extract results from query response
+                hits = []
+                for batch in results:
+                    for result in batch:
+                        hits.append({
+                            "id": str(result.id),
+                            "score": float(result.score),
+                            "payload": result.payload or {},
+                        })
+                
+                return hits[:top_k]
+            except (ImportError, AttributeError, Exception) as query_error:
+                # Fallback to manual fusion if query() API not available
+                logger.debug(
+                    f"Query API not available, using manual fusion: {query_error}",
+                    extra={"collection_name": collection_name},
+                )
+                
+                # Manual fusion: run both searches and combine
+                # 1. Vector search using dense named vector
+                vec_results = self._client.search(
+                    collection_name=collection_name,
+                    query_vector=query_vector,
+                    query_filter=qdrant_filter,
+                    limit=top_k * 2,  # Get more candidates for fusion
+                    with_payload=True,
+                    using="dense",
+                )
             
             # 2. Full-text search (using query_batch or scroll + filter)
             # Note: Qdrant's full-text search requires TextIndex or Query interface

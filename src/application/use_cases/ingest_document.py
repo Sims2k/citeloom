@@ -229,6 +229,7 @@ def ingest_document(
         to_store.append(store_item)
     
     # Step 6: Upsert to vector index
+    upsert_errors: list[str] = []  # T039a: Capture errors during upsert
     try:
         index.upsert(to_store, project_id=request.project_id, model_id=model_id)
         
@@ -243,6 +244,7 @@ def ingest_document(
         )
     except Exception as e:
         error_msg = f"Vector index upsert failed: {e}"
+        upsert_errors.append(error_msg)  # T039a: Capture error for audit log
         logger.error(
             error_msg,
             extra={"correlation_id": correlation_id, "doc_id": doc_id, "project_id": request.project_id},
@@ -272,20 +274,27 @@ def ingest_document(
         # To get exact filtered count, check chunker logs for "Quality filtering: X chunks filtered out"
         chunks_filtered = None  # Could be enhanced to extract from chunker metadata
         
+        # T039a: Capture model IDs (dense and sparse) in audit log
+        # Note: sparse_model_id is not yet available in IngestRequest, but will be added when
+        # project configuration includes sparse_model setting. For now, it's optional.
+        sparse_model_id = None  # TODO: Get from project configuration when available
+        
         audit_entry = {
             "correlation_id": correlation_id,
             "doc_id": doc_id,
             "project_id": request.project_id,
             "source_path": request.source_path,
-            "chunks_written": len(to_store),
+            "chunks_written": len(to_store),  # T039a: Collection write count
             "chunks_added": chunks_added,
             "chunks_updated": chunks_updated,
             "chunks_skipped": chunks_skipped,
             "chunks_filtered": chunks_filtered,  # T029a: Quality filter statistics (logged by chunker)
             "documents_processed": 1,
             "duration_seconds": round(duration_seconds, 3),
-            "embed_model": model_id,  # Dense embedding model
+            "dense_model": model_id,  # T039a: Dense embedding model ID
+            "sparse_model": sparse_model_id,  # T039a: Sparse model ID (optional, for hybrid search)
             "warnings": warnings,
+            "errors": upsert_errors,  # T039a: Errors encountered during upsert operations
             "timestamp": time.time(),
         }
         

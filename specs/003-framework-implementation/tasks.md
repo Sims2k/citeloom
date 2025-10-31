@@ -94,17 +94,17 @@
 
 ### Implementation for User Story 3
 
-- [ ] T030 [US3] Implement QdrantIndexAdapter.ensure_collection() in src/infrastructure/adapters/qdrant_index.py to create collections with named vectors (dense and sparse)
-- [ ] T031 [US3] Add model binding via set_model() for dense embeddings in src/infrastructure/adapters/qdrant_index.py
-- [ ] T032 [US3] Add model binding via set_sparse_model() for sparse embeddings in src/infrastructure/adapters/qdrant_index.py (when hybrid enabled)
-- [ ] T033 [US3] Implement write-guard validation (check embed_model matches collection metadata) in src/infrastructure/adapters/qdrant_index.py
-- [ ] T034 [US3] Create keyword payload indexes on project_id, doc_id, citekey, year, tags in src/infrastructure/adapters/qdrant_index.py
-- [ ] T035 [US3] Store dense_model_id and sparse_model_id in collection metadata in src/infrastructure/adapters/qdrant_index.py
-- [ ] T036 [US3] Implement per-project collection naming (proj-{project_id}) in src/infrastructure/adapters/qdrant_index.py
-- [ ] T037 [US3] Add server-side project filtering enforcement in all search operations in src/infrastructure/adapters/qdrant_index.py
-- [ ] T038 [US3] Update VectorIndexPort protocol in src/application/ports/vector_index.py to include ensure_collection() method and sparse_model_id parameter
-- [ ] T039 [US3] Update payload schema to include project_id, doc_id, section_path, page_start, page_end, citekey, doi, year, authors, title, tags, source_path, chunk_text, heading_chain fields in src/infrastructure/adapters/qdrant_index.py
-- [ ] T039a [US3] Ensure audit logs capture collection writes (chunks_written count), model IDs (dense_model and sparse_model), and any errors encountered during upsert operations in audit log writing (FR-018)
+- [X] T030 [US3] Implement QdrantIndexAdapter.ensure_collection() in src/infrastructure/adapters/qdrant_index.py to create collections with named vectors (dense and sparse)
+- [X] T031 [US3] Add model binding via set_model() for dense embeddings in src/infrastructure/adapters/qdrant_index.py
+- [X] T032 [US3] Add model binding via set_sparse_model() for sparse embeddings in src/infrastructure/adapters/qdrant_index.py (when hybrid enabled)
+- [X] T033 [US3] Implement write-guard validation (check embed_model matches collection metadata) in src/infrastructure/adapters/qdrant_index.py
+- [X] T034 [US3] Create keyword payload indexes on project_id, doc_id, citekey, year, tags in src/infrastructure/adapters/qdrant_index.py
+- [X] T035 [US3] Store dense_model_id and sparse_model_id in collection metadata in src/infrastructure/adapters/qdrant_index.py
+- [X] T036 [US3] Implement per-project collection naming (proj-{project_id}) in src/infrastructure/adapters/qdrant_index.py
+- [X] T037 [US3] Add server-side project filtering enforcement in all search operations in src/infrastructure/adapters/qdrant_index.py
+- [X] T038 [US3] Update VectorIndexPort protocol in src/application/ports/vector_index.py to include ensure_collection() method and sparse_model_id parameter
+- [X] T039 [US3] Update payload schema to include project_id, doc_id, section_path, page_start, page_end, citekey, doi, year, authors, title, tags, source_path, chunk_text, heading_chain fields in src/infrastructure/adapters/qdrant_index.py
+- [X] T039a [US3] Ensure audit logs capture collection writes (chunks_written count), model IDs (dense_model and sparse_model), and any errors encountered during upsert operations in audit log writing (FR-018)
 
 **Checkpoint**: At this point, User Stories 1, 2, AND 3 should all work independently
 

@@ -78,3 +78,29 @@ class VectorIndexPort(Protocol):
             Optional method - only required if hybrid_enabled=True
         """
         ...
+    
+    def ensure_collection(
+        self,
+        project_id: str,
+        dense_model_id: str,
+        sparse_model_id: str | None = None,
+        on_disk_vectors: bool = False,
+        on_disk_hnsw: bool = False
+    ) -> None:
+        """
+        Ensure collection exists with named vectors and model bindings.
+        
+        Args:
+            project_id: Project identifier
+            dense_model_id: Dense embedding model identifier
+            sparse_model_id: Optional sparse model identifier (for hybrid)
+            on_disk_vectors: Whether to store vectors on-disk (for large projects)
+            on_disk_hnsw: Whether to store HNSW index on-disk
+        
+        Creates collection with:
+        - Named vectors: 'dense' and optionally 'sparse'
+        - Model bindings via set_model() and set_sparse_model()
+        - Payload indexes: keyword on project_id, doc_id, citekey, year, tags; full-text on chunk_text
+        - On-disk storage flags if specified
+        """
+        ...
