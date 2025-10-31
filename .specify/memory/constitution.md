@@ -399,6 +399,52 @@ Operating Procedure (Humans & Agents)
 - **Quality**: All code passes linting (ruff, no errors), Clean Architecture compliance maintained, proper error handling throughout, type hints and documentation complete
 - **Status**: User Story 3 complete - Full query and retrieval capability with semantic and hybrid search, project filtering, and citation-ready output formatting
 
+**Phase 6: User Story 4 - Access Chunks via MCP Tools** — ✅ Complete (2025-01-27)
+- **MCP Server Implementation**:
+  - Created MCP server setup (`src/infrastructure/mcp/server.py`) with stdio transport for editor integration (Cursor, Claude Desktop)
+  - Configuration loading from `citeloom.toml` via `CITELOOM_CONFIG` environment variable
+  - Tool registration and async execution handling with proper error serialization
+  - CLI integration: Added `mcp-server` command to main Typer app (`uv run citeloom mcp-server`)
+- **MCP Tools Implementation** (`src/infrastructure/mcp/tools.py`):
+  - **store_chunks**: Batched upsert (100-500 chunks per batch) with 15s timeout
+    - Project validation, embedding model consistency checks via write-guard
+    - Integration with QdrantIndexAdapter.upsert() with exponential backoff retry
+    - Error codes: `INVALID_PROJECT`, `EMBEDDING_MISMATCH`, `TIMEOUT`
+  - **find_chunks**: Vector search with 8s timeout
+    - Wired to `QueryChunks` use case with project filtering enforcement
+    - Text trimming to `max_chars_per_chunk` policy (1800 chars default)
+    - Citation-ready metadata extraction (citekey, page_span, section_path, DOI/URL)
+    - Error codes: `INVALID_PROJECT`, `TIMEOUT`
+  - **query_hybrid**: Hybrid search (query-time fusion) with 15s timeout
+    - Wired to `QueryChunks` use case with hybrid_enabled validation
+    - BM25 + vector score fusion with normalized weighting (0.3 * text + 0.7 * vector)
+    - Error codes: `INVALID_PROJECT`, `HYBRID_NOT_SUPPORTED`, `TIMEOUT`
+  - **inspect_collection**: Collection metadata inspection with 5s timeout
+    - Collection size, embedding model, payload schema extraction
+    - Sample payloads (0-5 max) with structured format matching Qdrant payload structure
+    - Error codes: `INVALID_PROJECT`, `INDEX_UNAVAILABLE`
+  - **list_projects**: Fast project enumeration (no timeout)
+    - Returns all configured projects with metadata (collection, embed_model, hybrid_enabled)
+    - No error codes (always succeeds, may return empty list)
+- **Error Taxonomy**:
+  - Standardized error codes: `INVALID_PROJECT`, `EMBEDDING_MISMATCH`, `HYBRID_NOT_SUPPORTED`, `INDEX_UNAVAILABLE`, `TIMEOUT`
+  - Structured JSON error responses with human-readable messages and detailed context
+  - Consistent error handling across all tools with proper serialization
+- **Async/Sync Integration**:
+  - Proper async/await patterns using `asyncio.run_in_executor()` for timeout support
+  - Bridges synchronous use cases and adapters to async MCP protocol
+  - Timeout enforcement per tool specification (8-15s depending on operation complexity)
+- **Tests**:
+  - Comprehensive integration test suite (`tests/integration/test_mcp_tools.py`) - 9 tests covering:
+    - Project enumeration (list_projects with empty and populated settings)
+    - Invalid project validation (find_chunks, query_hybrid, inspect_collection, store_chunks)
+    - Hybrid not supported scenarios
+    - Batch size validation (store_chunks)
+    - Unknown tool handling
+    - Proper error response structure validation
+- **Quality**: All code passes ruff linting, comprehensive integration tests, proper error handling, follows Clean Architecture principles, type hints and documentation complete
+- **Status**: User Story 4 complete - MCP integration ready for AI development environment testing. All MCP tools expose project-scoped, time-bounded operations with proper error taxonomy and citation-ready output formatting
+
 ---
 
-**Version**: 1.7.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-01-27 (Phase 5 completion - Query and Retrieve Relevant Chunks)
+**Version**: 1.8.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-01-27 (Phase 6 completion - Access Chunks via MCP Tools)
