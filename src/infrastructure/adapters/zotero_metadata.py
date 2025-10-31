@@ -70,51 +70,93 @@ class ZoteroCslJsonResolver:
             for item in items:
                 key = item.get("id") or item.get("citekey") or item.get("citationKey")
                 if key == citekey:
+                    logger.info(
+                        f"Metadata matched by citekey for doc_id={doc_id}",
+                        extra={"doc_id": doc_id, "citekey": citekey},
+                    )
                     return self._extract_metadata(item, doc_id)
         
-        # Match by DOI (if source_hint contains DOI)
-        if source_hint and "doi:" in source_hint.lower():
-            # Extract DOI from hint
-            doi_hint = source_hint.lower().split("doi:")[-1].strip()
-            for item in items:
-                item_doi = item.get("DOI") or item.get("doi", "").lower()
-                if item_doi and doi_hint in item_doi:
-                    return self._extract_metadata(item, doc_id)
-        
-        # Fallback: match by normalized title (if source_hint is title)
+        # DOI-first matching: Extract and match DOI if available in source_hint
+        doi_hint: str | None = None
         if source_hint:
+            source_hint_lower = source_hint.lower()
+            # Check for DOI in various formats
+            if "doi:" in source_hint_lower:
+                # Extract DOI from "doi:10.1234/example" format
+                doi_hint = source_hint_lower.split("doi:")[-1].strip()
+            elif source_hint_lower.startswith("https://doi.org/") or source_hint_lower.startswith("http://doi.org/"):
+                # Extract from URL
+                doi_hint = source_hint_lower.replace("https://doi.org/", "").replace("http://doi.org/", "").strip()
+            elif source_hint.startswith("10."):
+                # Direct DOI format "10.1234/example" (case-sensitive check for 10.)
+                doi_hint = source_hint.strip()
+        
+        if doi_hint:
+            # Normalize DOI for matching (remove URL prefixes, lowercase, strip)
+            doi_hint_normalized = self._normalize_doi(doi_hint)
+            for item in items:
+                item_doi = item.get("DOI") or item.get("doi")
+                if item_doi:
+                    item_doi_normalized = self._normalize_doi(item_doi)
+                    # Exact match or contains match (handles partial DOIs)
+                    if doi_hint_normalized == item_doi_normalized or doi_hint_normalized in item_doi_normalized:
+                        logger.info(
+                            f"Metadata matched by DOI for doc_id={doc_id}",
+                            extra={"doc_id": doc_id, "doi": item_doi},
+                        )
+                        return self._extract_metadata(item, doc_id)
+        
+        # Fallback: match by normalized title (fuzzy matching)
+        if source_hint and not doi_hint:  # Only if source_hint is not a DOI
             normalized_hint = self._normalize_title(source_hint)
             best_match = None
             best_score = 0.0
+            fuzzy_threshold = 0.8  # Configurable threshold (default per spec)
             
             for item in items:
                 item_title = item.get("title", "")
                 if item_title:
                     normalized_item = self._normalize_title(item_title)
-                    # Simple fuzzy matching (character overlap)
+                    # Jaccard similarity on words
                     score = self._fuzzy_score(normalized_hint, normalized_item)
-                    if score > best_score and score >= 0.8:  # Threshold
+                    if score > best_score and score >= fuzzy_threshold:
                         best_score = score
                         best_match = item
             
             if best_match:
+                logger.info(
+                    f"Metadata matched by title (score={best_score:.2f}) for doc_id={doc_id}",
+                    extra={"doc_id": doc_id, "score": best_score},
+                )
                 return self._extract_metadata(best_match, doc_id)
         
-        # No match found
-        logger.warning(
-            f"Metadata not found for doc_id={doc_id}",
-            extra={"doc_id": doc_id, "references_path": references_path},
+        # No match found - log MetadataMissing (non-blocking)
+        error = MetadataMissing(
+            doc_id=doc_id,
+            hint=(
+                f"Check references file {references_path} for matching entry. "
+                f"Try adding entry with DOI, citekey, or matching title."
+            ),
         )
-        # Log MetadataMissing for observability (non-blocking)
-        try:
-            raise MetadataMissing(
-                doc_id=doc_id,
-                hint=f"Check references file {references_path} for matching entry",
-            )
-        except MetadataMissing as e:
-            logger.warning(str(e), extra={"doc_id": doc_id})
+        logger.warning(
+            str(error),
+            extra={"doc_id": doc_id, "references_path": references_path, "source_hint": source_hint},
+        )
         
         return None
+    
+    def _normalize_doi(self, doi: str) -> str:
+        """
+        Normalize DOI for matching.
+        
+        Removes URL prefixes, converts to lowercase, strips whitespace.
+        """
+        normalized = doi.lower().strip()
+        # Remove common DOI URL prefixes
+        for prefix in ["https://doi.org/", "http://doi.org/", "doi:", "dx.doi.org/"]:
+            if normalized.startswith(prefix):
+                normalized = normalized[len(prefix):]
+        return normalized.strip()
     
     def _normalize_title(self, title: str) -> str:
         """Normalize title for matching (lowercase, remove punctuation, collapse spaces)."""

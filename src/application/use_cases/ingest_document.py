@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Mapping, Any, Sequence
 
 from ...infrastructure.logging import get_correlation_id
+from ...domain.models.citation_meta import CitationMeta
 from ..dto.ingest import IngestRequest, IngestResult
 from ..ports.converter import TextConverterPort
 from ..ports.chunker import ChunkerPort
@@ -85,7 +86,55 @@ def ingest_document(
         warnings.append(error_msg)
         raise
     
-    # Step 3: Resolve metadata and enrich chunks
+    # Step 3: Extract source hints from conversion result or source path
+    # Extract title hint from source path (basename without extension)
+    source_path_obj = Path(request.source_path)
+    title_hint = source_path_obj.stem if source_path_obj.is_file() else None
+    
+    # Try to extract DOI from conversion result structure if available
+    doi_hint: str | None = None
+    structure = conversion.get("structure", {})
+    # Check if structure contains metadata with DOI
+    if isinstance(structure, dict):
+        metadata = structure.get("metadata", {})
+        if isinstance(metadata, dict):
+            doi_hint = metadata.get("doi") or metadata.get("DOI")
+    
+    # Construct source hint: prefer DOI, fallback to title
+    source_hint: str | None = None
+    if doi_hint:
+        source_hint = f"doi:{doi_hint}"
+    elif title_hint:
+        source_hint = title_hint
+    
+    # Step 4: Resolve metadata once per document (before chunk loop)
+    resolved_meta: CitationMeta | None = None
+    try:
+        resolved_meta = resolver.resolve(
+            citekey=None,  # Citekey not available from conversion result
+            references_path=request.references_path,
+            doc_id=doc_id,
+            source_hint=source_hint,
+        )
+        if resolved_meta:
+            logger.info(
+                f"Metadata resolved for doc_id={doc_id}: {resolved_meta.citekey}",
+                extra={"correlation_id": correlation_id, "doc_id": doc_id, "citekey": resolved_meta.citekey},
+            )
+    except Exception as e:
+        warning_msg = f"Metadata resolution failed for doc_id={doc_id}: {e}"
+        warnings.append(warning_msg)
+        logger.warning(warning_msg, extra={"correlation_id": correlation_id, "doc_id": doc_id})
+        resolved_meta = None
+    
+    if not resolved_meta:
+        warnings.append(f"Metadata not resolved for doc_id={doc_id}")
+        logger.warning(
+            f"Metadata not resolved for doc_id={doc_id}",
+            extra={"correlation_id": correlation_id, "doc_id": doc_id},
+        )
+    
+    # Step 5: Enrich chunks with metadata and prepare for embedding
     texts: list[str] = []
     enriched: list[dict[str, Any]] = []
     for chunk in chunks:
@@ -105,40 +154,22 @@ def ingest_document(
             chunk_dict = dict(chunk)  # type: ignore[arg-type]
             chunk_text = chunk_dict.get("text", "")
         
-        # Resolve citation metadata
-        try:
-            meta = resolver.resolve(
-                citekey=None,  # TODO: Extract from chunk if available
-                references_path=request.references_path,
-                doc_id=doc_id,
-                source_hint=None,  # TODO: Extract from conversion result if available
-            )
-            if meta:
-                chunk_dict["citation"] = {
-                    "citekey": meta.citekey,
-                    "title": meta.title,
-                    "authors": meta.authors,
-                    "year": meta.year,
-                    "doi": meta.doi,
-                    "url": meta.url,
-                    "tags": meta.tags,
-                    "collections": meta.collections,
-                }
-            else:
-                warnings.append(f"Metadata not resolved for doc_id={doc_id}")
-                logger.warning(
-                    f"Metadata not resolved for doc_id={doc_id}",
-                    extra={"correlation_id": correlation_id, "doc_id": doc_id},
-                )
-        except Exception as e:
-            warning_msg = f"Metadata resolution failed for doc_id={doc_id}: {e}"
-            warnings.append(warning_msg)
-            logger.warning(warning_msg, extra={"correlation_id": correlation_id, "doc_id": doc_id})
-        
+        # Attach citation metadata to chunk (if resolved)
+        if resolved_meta:
+            chunk_dict["citation"] = {
+                "citekey": resolved_meta.citekey,
+                "title": resolved_meta.title,
+                "authors": resolved_meta.authors,
+                "year": resolved_meta.year,
+                "doi": resolved_meta.doi,
+                "url": resolved_meta.url,
+                "tags": resolved_meta.tags,
+                "collections": resolved_meta.collections,
+            }
         enriched.append(chunk_dict)
         texts.append(chunk_text)
     
-    # Step 4: Generate embeddings
+    # Step 6: Generate embeddings
     try:
         model_id = request.embedding_model
         vectors = embedder.embed(texts, model_id=model_id)
@@ -191,7 +222,7 @@ def ingest_document(
         warnings.append(error_msg)
         raise
     
-    # Step 7: Write audit log
+    # Step 8: Write audit log
     duration_seconds = time.time() - start_time
     
     if audit_dir:

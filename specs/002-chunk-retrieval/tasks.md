@@ -124,16 +124,16 @@
 
 #### Application Layer
 
-- [ ] T040 [US2] Enhance IngestDocument use case in src/application/use_cases/ingest_document.py to call metadata resolver and attach CitationMeta to chunks
+- [X] T040 [US2] Enhance IngestDocument use case in src/application/use_cases/ingest_document.py to call metadata resolver and attach CitationMeta to chunks
 
 #### Infrastructure Adapters
 
-- [ ] T041 [US2] Implement ZoteroCslJsonResolver in src/infrastructure/adapters/zotero_metadata.py with DOI-first matching, normalized title fallback, fuzzy threshold
-- [ ] T042 [US2] Add MetadataMissing logging to ZoteroCslJsonResolver in src/infrastructure/adapters/zotero_metadata.py (non-blocking)
+- [X] T041 [US2] Implement ZoteroCslJsonResolver in src/infrastructure/adapters/zotero_metadata.py with DOI-first matching, normalized title fallback, fuzzy threshold
+- [X] T042 [US2] Add MetadataMissing logging to ZoteroCslJsonResolver in src/infrastructure/adapters/zotero_metadata.py (non-blocking)
 
 #### Tests
 
-- [ ] T043 [P] [US2] Create integration test for Zotero metadata matching in tests/integration/test_zotero_metadata.py with DOI match, title fallback, unknown handling
+- [X] T043 [P] [US2] Create integration test for Zotero metadata matching in tests/integration/test_zotero_metadata.py with DOI match, title fallback, unknown handling
 
 **Checkpoint**: User Stories 1 AND 2 should both work independently - chunks include citation metadata
 
