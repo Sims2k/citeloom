@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
 from typing import Mapping, Any, Sequence
 
 from ...domain.errors import EmbeddingModelMismatch, ProjectNotFound
@@ -35,6 +36,14 @@ except Exception:  # pragma: no cover
     Fusion = None  # type: ignore
 
 logger = logging.getLogger(__name__)
+
+# Fixed namespace UUID for deterministic ID conversion
+_NAMESPACE_UUID = uuid.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8')
+
+
+def _string_to_uuid(id_string: str) -> uuid.UUID:
+    """Convert a string ID to a UUID deterministically."""
+    return uuid.uuid5(_NAMESPACE_UUID, id_string)
 
 
 class QdrantIndexAdapter:
@@ -189,17 +198,13 @@ class QdrantIndexAdapter:
                             extra={"collection_name": collection_name, "sparse_model_id": sparse_model_id},
                         )
                 
-                # Store model IDs in collection metadata for write-guard
-                metadata = {
-                    "dense_model_id": dense_model_id,
-                }
+                # Store model IDs in local cache for write-guard validation
+                # (Qdrant doesn't support collection metadata, so we store locally)
+                if collection_name not in self._local:
+                    self._local[collection_name] = {"items": {}}
+                self._local[collection_name]["dense_model_id"] = dense_model_id
                 if sparse_model_id is not None:
-                    metadata["sparse_model_id"] = sparse_model_id
-                
-                self._client.update_collection(
-                    collection_name=collection_name,
-                    collection_metadata=metadata,
-                )
+                    self._local[collection_name]["sparse_model_id"] = sparse_model_id
                 
                 # Create payload indexes
                 self._create_payload_indexes(collection_name)
@@ -215,61 +220,55 @@ class QdrantIndexAdapter:
                 )
             else:
                 # Verify model_id matches (write-guard check)
-                collection_info = self._client.get_collection(collection_name)
-                metadata = collection_info.config.params.vectors  # This might be wrong structure
-                # Try to get from collection metadata instead
-                try:
-                    collection_metadata = collection_info.config.params  # This structure varies
-                    # Access metadata through proper API
-                    collection_full_info = self._client.get_collection(collection_name)
-                    # Get metadata - in newer Qdrant versions it's available differently
-                    # For now, check if we can access it via collection info
-                    stored_dense_model = None
-                    stored_sparse_model = None
-                    # Try to get from metadata dict if available
-                    if hasattr(collection_full_info, "config") and hasattr(collection_full_info.config, "params"):
-                        # Metadata might be in a different location
+                # Get stored model IDs from local cache
+                stored_dense_model = None
+                stored_sparse_model = None
+                if collection_name in self._local:
+                    stored_dense_model = self._local[collection_name].get("dense_model_id")
+                    stored_sparse_model = self._local[collection_name].get("sparse_model_id")
+                
+                # If not in cache, try to infer from first point's payload
+                if not stored_dense_model:
+                    try:
+                        # Try to get a sample point to read embed_model from payload
+                        collection_info = self._client.get_collection(collection_name)
+                        if collection_info.points_count > 0:
+                            # Get first point to check embed_model
+                            # scroll returns (points, next_page_offset) tuple
+                            scroll_result = self._client.scroll(
+                                collection_name=collection_name,
+                                limit=1,
+                            )
+                            points = scroll_result[0]  # Extract points from tuple
+                            if points and len(points) > 0:
+                                sample_point = points[0]
+                                if sample_point.payload and "embed_model" in sample_point.payload:
+                                    stored_dense_model = sample_point.payload["embed_model"]
+                    except Exception:
+                        # If we can't read from points, skip validation for this collection
                         pass
-                    
-                    # Fallback: try to get from get_collection response metadata
-                    # Qdrant API may store this in collection_metadata
-                    stored_metadata = getattr(collection_full_info, "metadata", None) or {}
-                    stored_dense_model = stored_metadata.get("dense_model_id")
-                    stored_sparse_model = stored_metadata.get("sparse_model_id")
-                    
-                    # If metadata not found, try collection config
-                    if not stored_dense_model:
-                        # This is a fallback - we'll improve this later
-                        stored_dense_model = stored_metadata.get("embed_model")  # Legacy field
-                    
-                    # Validate dense model match (write-guard)
-                    if stored_dense_model and dense_model_id != stored_dense_model:
-                        # Derive project_id from collection_name
-                        project_id = collection_name.replace("proj-", "").replace("-", "/")
-                        raise EmbeddingModelMismatch(
-                            project_id=project_id,
-                            expected_model=stored_dense_model,
-                            provided_model=dense_model_id,
-                        )
-                    
-                    # Validate sparse model match if provided
-                    if sparse_model_id is not None and stored_sparse_model and sparse_model_id != stored_sparse_model:
-                        logger.warning(
-                            f"Sparse model mismatch for collection '{collection_name}': "
-                            f"expected '{stored_sparse_model}', got '{sparse_model_id}'. "
-                            "Hybrid search may behave unexpectedly.",
-                            extra={
-                                "collection_name": collection_name,
-                                "expected_sparse_model": stored_sparse_model,
-                                "provided_sparse_model": sparse_model_id,
-                            },
-                        )
-                except AttributeError:
-                    # Metadata structure not available - skip validation for now
-                    logger.debug(
-                        f"Could not access collection metadata for '{collection_name}'. "
-                        "Skipping write-guard validation.",
-                        extra={"collection_name": collection_name},
+                
+                # Validate dense model match (write-guard)
+                if stored_dense_model and dense_model_id != stored_dense_model:
+                    # Derive project_id from collection_name
+                    project_id = collection_name.replace("proj-", "").replace("-", "/")
+                    raise EmbeddingModelMismatch(
+                        project_id=project_id,
+                        expected_model=stored_dense_model,
+                        provided_model=dense_model_id,
+                    )
+                
+                # Validate sparse model match if provided
+                if sparse_model_id is not None and stored_sparse_model and sparse_model_id != stored_sparse_model:
+                    logger.warning(
+                        f"Sparse model mismatch for collection '{collection_name}': "
+                        f"expected '{stored_sparse_model}', got '{sparse_model_id}'. "
+                        "Hybrid search may behave unexpectedly.",
+                        extra={
+                            "collection_name": collection_name,
+                            "expected_sparse_model": stored_sparse_model,
+                            "provided_sparse_model": sparse_model_id,
+                        },
                     )
         except EmbeddingModelMismatch:
             raise
@@ -487,7 +486,9 @@ class QdrantIndexAdapter:
         # Real Qdrant upsert with exponential backoff retry
         points = []
         for item in items:
-            chunk_id = item.get("id", f"chunk-{len(points)}")
+            chunk_id_str = item.get("id", f"chunk-{len(points)}")
+            # Convert string ID to UUID (Qdrant requires UUID or integer)
+            chunk_id = _string_to_uuid(chunk_id_str)
             embedding = item.get("embedding", [])
             
             # Extract payload fields according to schema
@@ -555,8 +556,9 @@ class QdrantIndexAdapter:
             
             # Create point with named vector 'dense'
             # Note: Sparse vectors would be generated during query time via model binding
+            # Convert UUID to string for PointStruct (Qdrant accepts string or int IDs)
             point = PointStruct(
-                id=chunk_id,
+                id=str(chunk_id),
                 vector={"dense": embedding} if isinstance(embedding, list) else embedding,
                 payload=payload,
             )

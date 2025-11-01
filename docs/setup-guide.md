@@ -243,6 +243,67 @@ If you see warnings about "in-memory fallback":
 2. Add entries to `references/clean-arch.json` (CSL-JSON format from Zotero)
 3. Include DOI, citekey, or matching title for automatic resolution
 
+### Windows PyTorch DLL Loading Error
+
+**Problem:** `OSError: [WinError 1114] Eine DLL-Initialisierungsroutine ist fehlgeschlagen` when running ingest/query commands
+
+**Root Cause:** PyTorch (required by Docling for PDF conversion) has known DLL loading issues on Windows.
+
+**Solutions:**
+
+1. **Use WSL (Windows Subsystem for Linux)** - ✅ **CONFIRMED TO WORK**:
+   ```bash
+   # Install WSL if not already installed
+   wsl --install
+   
+   # In WSL, install uv and sync dependencies
+   wsl
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   export PATH="$HOME/.local/bin:$PATH"
+   
+   # Navigate to project (Windows paths are in /mnt/c/)
+   cd /mnt/c/Dev/Python-Projects/citeloom
+   
+   # Set venv to Linux filesystem to avoid permission issues
+   export UV_PROJECT_ENVIRONMENT="$HOME/.citeloom-venv"
+   
+   # Sync dependencies
+   uv sync --python python3.12
+   
+   # Run commands
+   uv run citeloom ingest run --project citeloom/clean-arch
+   ```
+   
+   **Note:** The Windows DLL error is completely resolved in WSL. PyTorch and Docling work correctly.
+
+2. **Downgrade PyTorch to 2.8.0** - ✅ **RECOMMENDED FIX**:
+   
+   According to [PyTorch issue #166628](https://github.com/pytorch/pytorch/issues/166628), PyTorch 2.9.0 has a known bug causing DLL initialization failures on Windows. The fix is to use PyTorch 2.8.0 instead.
+   
+   The `pyproject.toml` already pins torch to `<2.9.0`. To apply the fix:
+   
+   ```bash
+   # Remove the virtual environment (if locked by processes, close Python/IDE first)
+   Remove-Item -Recurse -Force .venv
+   
+   # Re-sync dependencies with the torch version constraint
+   uv sync
+   ```
+   
+   This will install PyTorch 2.8.0 which works correctly on Windows.
+
+3. **Fix PyTorch Installation (Alternative)**:
+   - Manually reinstall PyTorch 2.8.0: `uv pip uninstall torch && uv pip install "torch>=2.8.0,<2.9.0"`
+   - Install Visual C++ Redistributables: https://aka.ms/vs/17/release/vc_redist.x64.exe
+   - See [PyTorch Windows installation guide](https://pytorch.org/get-started/locally/)
+
+4. **Use Docker for Full Stack** (if available):
+   - Run CiteLoom in a Linux container where PyTorch works correctly
+
+**Note:** 
+- This is a Windows-specific issue with PyTorch 2.9.0. Linux and macOS users should not experience this problem.
+- ✅ **Solution confirmed**: Downgrading to PyTorch 2.8.0 resolves the DLL error completely. The `pyproject.toml` now pins torch to `<2.9.0` to prevent this issue.
+
 ## Environment Configuration
 
 For detailed environment variable configuration including Zotero setup, see [Environment Configuration Guide](environment-config.md).

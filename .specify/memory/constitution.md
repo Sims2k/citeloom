@@ -317,11 +317,122 @@ Operating Procedure (Humans & Agents)
 - Created data model document (data-model.md) with enhanced domain entities, value objects, and Qdrant payload schema
 - Generated port contracts (contracts/ports.md) and FastMCP tool contracts (contracts/fastmcp-tools.md)
 - Created quickstart guide (quickstart.md) with implementation checklist and common patterns
-- Generated actionable tasks.md with 89 tasks organized by 8 user stories (P1: US1-US3, P2: US4-US6, P3: US7-US8)
-- Updated constitution to version 1.11.0 with framework-specific patterns (named vectors, model binding, OCR language integration, FastMCP configuration)
+- Generated actionable tasks.md with 107 tasks organized by 11 phases (Setup, Foundational, 8 User Stories, Polish)
+- Updated constitution to version 1.12.0 with framework-specific patterns (named vectors, model binding, OCR language integration, FastMCP configuration)
 - Ready for implementation: All design artifacts complete, tasks organized for independent story implementation
 
-**Status**: Planning complete - Implementation phase ready to begin
+**Phase 1: Setup (Shared Infrastructure)** — ✅ Complete
+- Created `fastmcp.json` configuration file with dependencies, transport, and entrypoint
+- Added `python-dotenv` dependency via `uv add python-dotenv` for .env file support
+- Updated `.gitignore` to exclude .env files from version control
+- Verified existing project structure matches plan.md (src/domain, src/application, src/infrastructure)
+
+**Phase 2: Foundational (Blocking Prerequisites)** — ✅ Complete
+- **Environment Configuration**: Implemented environment variable loading from .env file with precedence logic (system env > .env)
+- **Domain Models**: Enhanced `CitationMeta` with optional `language` field, `Chunk` with `token_count` and `signal_to_noise_ratio`, `ConversionResult` with `ocr_languages` field
+- **Policies**: Updated `ChunkingPolicy` to include `min_chunk_length` and `min_signal_to_noise` fields for quality filtering
+- **Settings**: Updated Settings class to load environment variables with precedence rules
+
+**Phase 3: User Story 1 - Reliable Document Conversion with Structure Preservation (P1)** — ✅ Complete
+- **Docling v2 Integration**: Implemented `DoclingConverterAdapter.convert()` with DocumentConverter initialization
+- **OCR Support**: Added OCR language selection logic (priority: Zotero metadata language → explicit config → default ['en', 'de'])
+- **OCR Configuration**: Implemented Tesseract/RapidOCR configuration for scanned documents
+- **Timeout Handling**: Added timeout handling (120s document, 10s per-page) with diagnostic logging
+- **Structure Extraction**: Implemented page map extraction (page number → character span) and heading tree extraction with page anchors
+- **Text Normalization**: Added text normalization (hyphen repair, whitespace normalization) preserving code/math blocks
+- **Diagnostics**: Added image-only page detection and Windows compatibility warnings (WSL/Docker guidance)
+- **Audit Logging**: Added audit log writing infrastructure (JSONL format) documenting added/updated/skipped counts, duration, document IDs, and embedding model
+- **Protocol Updates**: Updated `TextConverterPort` to include `ocr_languages` parameter
+
+**Phase 4: User Story 2 - Heading-Aware Chunking with Tokenizer Alignment (P1)** — ✅ Complete
+- **HybridChunker**: Implemented `DoclingHybridChunkerAdapter.chunk()` with HybridChunker initialization
+- **Tokenizer Alignment**: Added tokenizer alignment validation ensuring chunking tokenizer matches embedding model tokenizer family
+- **Heading-Aware Chunking**: Implemented heading-aware chunking with heading_context ancestor headings
+- **Quality Filtering**: Added quality filtering logic (minimum 50 tokens, signal-to-noise ratio ≥ 0.3)
+- **Structure Preservation**: Implemented section path breadcrumb extraction from heading tree and page span mapping from page_map
+- **Token Counting**: Added token count calculation using embedding model tokenizer
+- **Deterministic IDs**: Ensured deterministic chunk ID generation using (doc_id, page_span/section_path, embedding_model_id, chunk_idx)
+- **Audit Logging**: Enhanced audit logs to capture chunk counts and quality filter statistics (filtered chunks count)
+
+**Phase 5: User Story 3 - Project-Isolated Vector Storage with Model Consistency (P1)** — ✅ Complete
+- **Named Vectors**: Implemented `QdrantIndexAdapter.ensure_collection()` to create collections with named vectors (dense and sparse)
+- **Model Binding**: Added model binding via `set_model()` for dense embeddings and `set_sparse_model()` for sparse embeddings (when hybrid enabled)
+- **Write-Guards**: Implemented write-guard validation (check embed_model matches collection metadata)
+- **Payload Indexes**: Created keyword payload indexes on project_id, doc_id, citekey, year, tags
+- **Collection Metadata**: Store dense_model_id and sparse_model_id in collection metadata
+- **Project Isolation**: Implemented per-project collection naming (proj-{project_id}) with server-side project filtering enforcement in all search operations
+- **Audit Logging**: Enhanced audit logs to capture collection writes (chunks_written count), model IDs (dense_model and sparse_model), and errors during upsert operations
+
+**Phase 6: User Story 4 - Hybrid Search with Query-Time Fusion (P2)** — ✅ Complete
+- **Full-Text Index**: Implemented full-text index creation on chunk_text payload field (when hybrid enabled)
+- **Hybrid Query**: Implemented `hybrid_query()` method using named vectors with RRF fusion
+- **Text-Based Queries**: Added text-based query support using model binding (set_model enables text queries)
+- **Model Validation**: Ensured both dense and sparse models are bound before allowing hybrid queries
+- **Use Case Integration**: Updated `QueryChunks` use case to support hybrid queries with named vectors
+
+**Phase 7: User Story 5 - Predictable MCP Tools with Bounded Outputs (P2)** — ✅ Complete
+- **FastMCP Server**: Created FastMCP server setup in `src/infrastructure/mcp/server.py` with stdio transport
+- **MCP Tools**: Implemented 5 standardized tools:
+  - `ingest_from_source`: 15s timeout with correlation ID support
+  - `query`: 8s timeout for dense-only search
+  - `query_hybrid`: 15s timeout for hybrid search
+  - `inspect_collection`: 5s timeout showing collection stats and model bindings
+  - `list_projects`: Fast enumeration (no timeout)
+- **Error Taxonomy**: Added standardized error codes (INVALID_PROJECT, EMBEDDING_MISMATCH, HYBRID_NOT_SUPPORTED, INDEX_UNAVAILABLE, TIMEOUT)
+- **Output Shaping**: Added text trimming to max_chars_per_chunk (1,800 chars) in all query tool responses
+- **Correlation IDs**: Added correlation IDs to all MCP tool responses
+- **Project Filtering**: Added server-side project filtering enforcement in all MCP query tools
+- **CLI Integration**: Updated CLI to expose mcp-server command
+
+**Phase 8: User Story 6 - Robust Citation Metadata Resolution via pyzotero (P2)** — ✅ Complete
+- **pyzotero Integration**: Added pyzotero dependency and replaced ZoteroCslJsonResolver with ZoteroPyzoteroResolver
+- **Better BibTeX**: Implemented Better BibTeX JSON-RPC client with port availability check (port 23119 for Zotero, 24119 for Juris-M) with timeout (5-10s)
+- **Citekey Extraction**: Added Better BibTeX citekey extraction with fallback parsing item['data']['extra'] field
+- **Metadata Matching**: Implemented pyzotero item search by DOI (exact match, normalized) then by title (normalized, fuzzy threshold ≥ 0.8)
+- **Field Extraction**: Extract metadata fields (title, creators → authors, year from date, DOI, URL, tags, collections, language)
+- **Language Mapping**: Added language field mapping (Zotero codes → OCR language codes, e.g., 'en-US' → 'en')
+- **OCR Integration**: Pass language from metadata to converter for OCR language selection
+- **Error Handling**: Added graceful error handling for pyzotero API connection failures and Better BibTeX JSON-RPC unavailability (non-blocking, returns None, logs MetadataMissing)
+
+**Phase 9: User Story 7 - System Validation and Operational Inspection (P3)** — ✅ Complete
+- **Validate Command**: Implemented validate command checking:
+  - Tokenizer-to-embedding alignment
+  - Vector database connectivity
+  - Collection presence and model lock verification
+  - Payload index verification
+  - Zotero library connectivity (pyzotero API connection test)
+- **Inspect Command**: Implemented inspect command displaying:
+  - Collection statistics
+  - Embedding model identifier
+  - Payload schema samples
+  - Index presence confirmation
+  - Optional sample chunk data
+- **Error Messages**: Added clear error messages with actionable guidance
+- **CLI Registration**: Registered validate and inspect commands in CLI
+
+**Phase 10: User Story 8 - Environment-Based Configuration for API Keys (P3)** — ✅ Complete
+- **Environment Loading**: Added python-dotenv loading with automatic .env file detection
+- **Precedence Logic**: Implemented precedence logic (system env > .env file values)
+- **Optional Keys**: Added graceful handling of missing optional API keys (OPENAI_API_KEY, Better BibTeX JSON-RPC) with fallback to defaults
+- **Required Keys**: Added clear error messages for missing required API keys (QDRANT_API_KEY when auth required, ZOTERO_LIBRARY_ID/ZOTERO_API_KEY for remote access)
+- **Zotero Config**: Added Zotero configuration support (ZOTERO_LIBRARY_ID, ZOTERO_LIBRARY_TYPE, ZOTERO_API_KEY, ZOTERO_LOCAL)
+- **Settings Integration**: Updated Settings class to use environment-loaded values including Zotero config
+- **Documentation**: Verified .env file is in .gitignore and documented Zotero configuration
+
+**Phase 11: Polish & Cross-Cutting Concerns** — ✅ Complete
+- **Integration Tests**: Added comprehensive integration tests:
+  - Docling conversion tests (`tests/integration/test_docling_conversion.py`)
+  - Qdrant named vectors and model binding tests (`tests/integration/test_qdrant_named_vectors.py`)
+  - FastMCP tools tests (`tests/integration/test_fastmcp_tools.py`)
+  - pyzotero metadata resolution and Better BibTeX citekey extraction tests (`tests/integration/test_zotero_metadata.py`)
+- **Unit Tests**: Added unit tests for environment variable loading (`tests/unit/test_environment_loader.py`)
+- **Audit Logging**: Enhanced audit logging to include dense_model and sparse_model IDs in existing audit log implementation
+- **Diagnostic Logging**: Added diagnostic logging improvements for timeout/page failures in `src/infrastructure/adapters/docling_converter.py`
+- **Documentation**: Updated documentation with FastMCP configuration examples and environment variable configuration guide including Zotero setup (`docs/environment-config.md`)
+- **Code Cleanup**: Performed code cleanup and refactoring across all adapters
+- **Validation**: Created and ran quickstart.md validation scenarios (`scripts/validate_quickstart.py`)
+
+**Status**: ✅ Implementation complete - All 107 tasks across 11 phases finished. Production-ready document retrieval system with Docling v2 conversion, Qdrant named vectors with RRF fusion, FastMCP integration, pyzotero metadata resolution, comprehensive validation, and environment-based configuration.
 
 ---
 
@@ -522,4 +633,4 @@ Operating Procedure (Humans & Agents)
 
 ---
 
-**Version**: 1.12.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-10-31 (Milestone M3 analysis complete: Fixed specification inconsistencies (MCP tool names, CSL-JSON references, task IDs), clarified remediation guidance, ready for implementation - Framework Implementation Milestone M3)
+**Version**: 1.13.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-01-27 (Milestone 003-framework-implementation complete: All 11 phases and 107 tasks finished. Production-ready document retrieval system with comprehensive testing, documentation, and polish complete)
