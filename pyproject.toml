@@ -10,10 +10,15 @@ dependencies = [
     "fastembed>=0.7.3",
     "mcp>=0.9.0",
     "pydantic>=2.12.3",
+    "python-dotenv>=1.2.1",
+    "pyzotero>=1.7.3",
     "qdrant-client>=1.15.1",
     "rich>=14.2.0",
     "sentence-transformers>=5.1.2",
     "typer>=0.19.2",
+    # Pin torch to <2.9.0 to avoid Windows DLL loading bug (see https://github.com/pytorch/pytorch/issues/166628)
+    # PyTorch 2.9.0 has a known bug causing [WinError 1114] DLL initialization failures on Windows
+    "torch>=2.8.0,<2.9.0",
 ]
 
 [build-system]

@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel
 
 
@@ -6,8 +8,8 @@ class IngestRequest(BaseModel):
     
     source_path: str
     project_id: str
-    references_path: str
-    embedding_model: str
+    zotero_config: dict[str, Any] | None = None  # Optional Zotero configuration (replaces references_path)
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
 
 
 class IngestResult(BaseModel):

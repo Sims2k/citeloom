@@ -60,10 +60,11 @@ def query_chunks(
     # Perform search (vector or hybrid)
     try:
         if request.hybrid and policy.hybrid_enabled:
-            # Hybrid search: full-text + vector fusion
+            # T045: Hybrid search using named vectors with RRF fusion
+            # Qdrant automatically fuses dense and sparse results when both models are bound
             hits = index.hybrid_query(
                 query_text=request.query_text,
-                query_vector=query_vec,
+                query_vector=query_vec,  # Optional fallback if model binding not available
                 project_id=request.project_id,
                 top_k=effective_top_k,
                 filters=request.filters,

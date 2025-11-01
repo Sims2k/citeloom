@@ -42,6 +42,36 @@ class FastEmbedAdapter:
             parts = self.default_model.split("/", 1)
             return f"fastembed/{parts[1]}"
         return f"fastembed/{self.default_model}"
+    
+    @property
+    def tokenizer_family(self) -> str:
+        """
+        Return the tokenizer family identifier for alignment validation.
+        
+        Returns:
+            Tokenizer family (e.g., 'minilm', 'bge')
+        """
+        model_name = self.model_id.lower()
+        # Extract tokenizer family from model identifier
+        if "minilm" in model_name:
+            return "minilm"
+        elif "bge" in model_name:
+            return "bge"
+        elif "openai" in model_name or "ada" in model_name:
+            return "openai"
+        elif "tiktoken" in model_name:
+            return "tiktoken"
+        else:
+            # Default fallback: try to extract from model name
+            # For models like "sentence-transformers/all-MiniLM-L6-v2", extract "minilm"
+            parts = model_name.split("/")
+            if len(parts) > 1:
+                model_part = parts[-1]
+                if "minilm" in model_part:
+                    return "minilm"
+                elif "bge" in model_part:
+                    return "bge"
+            return "unknown"
 
     def embed(self, texts: Sequence[str], model_id: str | None = None) -> list[list[float]]:
         """

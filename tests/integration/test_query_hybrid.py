@@ -1,9 +1,9 @@
 """Integration tests for hybrid query functionality."""
 
-from application.dto.query import QueryRequest
-from application.use_cases.query_chunks import query_chunks
-from infrastructure.adapters.fastembed_embeddings import FastEmbedAdapter
-from infrastructure.adapters.qdrant_index import QdrantIndexAdapter
+from src.application.dto.query import QueryRequest
+from src.application.use_cases.query_chunks import query_chunks
+from src.infrastructure.adapters.fastembed_embeddings import FastEmbedAdapter
+from src.infrastructure.adapters.qdrant_index import QdrantIndexAdapter
 
 
 def test_query_hybrid_modes_execute():

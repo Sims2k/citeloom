@@ -12,7 +12,7 @@ from src.application.ports.embeddings import EmbeddingPort
 from src.application.ports.vector_index import VectorIndexPort
 from src.infrastructure.adapters.docling_converter import DoclingConverterAdapter
 from src.infrastructure.adapters.docling_chunker import DoclingHybridChunkerAdapter
-from src.infrastructure.adapters.zotero_metadata import ZoteroCslJsonResolver
+from src.infrastructure.adapters.zotero_metadata import ZoteroPyzoteroResolver
 from src.infrastructure.adapters.fastembed_embeddings import FastEmbedAdapter
 from src.infrastructure.adapters.qdrant_index import QdrantIndexAdapter
 from src.infrastructure.config.settings import Settings
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 def run(
     project: str = typer.Option(..., help="Project id, e.g. citeloom/clean-arch"),
     source: str | None = typer.Argument(None, help="Path to source document or directory (defaults to assets/raw if not specified)"),
-    references: str | None = typer.Option(None, help="Path to CSL-JSON references file"),
+    zotero_config: str | None = typer.Option(None, help="Zotero configuration (JSON string or env vars will be used)"),
     embedding_model: str | None = typer.Option(None, help="Embedding model identifier"),
     config_path: str = typer.Option("citeloom.toml", help="Path to citeloom.toml configuration file"),
 ):
@@ -62,8 +62,16 @@ def run(
         raise typer.Exit(1)
     
     # Use project settings or CLI overrides
-    references_path = references or str(project_settings.references_json)
     model_id = embedding_model or project_settings.embedding_model
+    
+    # Zotero config: parse JSON if provided, otherwise use env vars (resolver will handle)
+    zotero_config_dict = None
+    if zotero_config:
+        import json
+        try:
+            zotero_config_dict = json.loads(zotero_config)
+        except json.JSONDecodeError:
+            typer.echo(f"Warning: Invalid JSON for zotero_config, using environment variables instead", err=True)
     
     # Get audit directory from settings
     audit_dir = Path(settings.paths.audit_dir)
@@ -110,7 +118,7 @@ def run(
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
     
-    resolver: MetadataResolverPort = ZoteroCslJsonResolver()
+    resolver: MetadataResolverPort = ZoteroPyzoteroResolver(zotero_config=zotero_config_dict)
     embedder: EmbeddingPort = FastEmbedAdapter(default_model=model_id)
     index: VectorIndexPort = QdrantIndexAdapter(url=settings.qdrant.url)
     
@@ -131,7 +139,7 @@ def run(
         request = IngestRequest(
             project_id=project,
             source_path=str(doc_path),
-            references_path=references_path,
+            zotero_config=zotero_config_dict,
             embedding_model=model_id,
         )
         

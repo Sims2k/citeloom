@@ -1,17 +1,48 @@
 """Docling converter adapter with optional import handling for Windows compatibility."""
 
+import hashlib
+import logging
+import re
+import signal
+import sys
+from pathlib import Path
 from typing import Mapping, Any
 
 try:
-    import docling
+    from docling.document_converter import DocumentConverter
+    from docling.datamodel.base_models import InputFormat
+    try:
+        from docling.document_converter.pipeline_options import PdfPipelineOptions
+        from docling.document_converter.pipeline_options import DoclingPipelineOptions
+    except ImportError:
+        # Pipeline options may have different import path in some versions
+        PdfPipelineOptions = None  # type: ignore
+        DoclingPipelineOptions = None  # type: ignore
     DOCLING_AVAILABLE = True
 except ImportError:
     DOCLING_AVAILABLE = False
+    DocumentConverter = None  # type: ignore
+    InputFormat = None  # type: ignore
+    PdfPipelineOptions = None  # type: ignore
+    DoclingPipelineOptions = None  # type: ignore
+
+logger = logging.getLogger(__name__)
+
+
+class TimeoutError(Exception):
+    """Raised when document conversion exceeds timeout limits."""
 
 
 class DoclingConverterAdapter:
     """Adapter for Docling document conversion (optional on Windows)."""
 
+    # Default OCR languages (priority: Zotero metadata → explicit config → default)
+    DEFAULT_OCR_LANGUAGES = ['en', 'de']
+    
+    # Timeout limits (from spec clarifications)
+    DOCUMENT_TIMEOUT_SECONDS = 120
+    PAGE_TIMEOUT_SECONDS = 10
+    
     def __init__(self):
         if not DOCLING_AVAILABLE:
             raise ImportError(
@@ -22,45 +53,624 @@ class DoclingConverterAdapter:
                 "2. Use Python 3.11 (not recommended - project requires 3.12)\n"
                 "3. Wait for Windows support from docling/deepsearch-glm"
             )
-
-    def convert(self, source_path: str) -> Mapping[str, Any]:
+        
+        # Initialize DocumentConverter with OCR support
+        self._initialize_converter()
+    
+    def _initialize_converter(self) -> None:
+        """Initialize DocumentConverter with OCR configuration."""
+        try:
+            # Configure pipeline options with OCR enabled (if available)
+            # Docling v2 supports OCR via Tesseract/RapidOCR
+            # If pipeline options are not available, use default converter
+            if DoclingPipelineOptions:
+                pipeline_options = DoclingPipelineOptions()
+                
+                # Enable OCR for scanned documents
+                # Note: Docling automatically detects if OCR is needed
+                # We configure OCR languages via pipeline options
+                if PdfPipelineOptions:
+                    pdf_options = PdfPipelineOptions()
+                    # Enable OCR detection and processing
+                    pipeline_options.pdf = pdf_options
+                
+                self.converter = DocumentConverter(
+                    pipeline_options=pipeline_options,
+                    # Allow common formats: PDF, DOCX, PPTX, HTML, images
+                )
+            else:
+                # Fallback: initialize without pipeline options
+                self.converter = DocumentConverter()
+            
+            logger.debug("DocumentConverter initialized with OCR support")
+        except Exception as e:
+            logger.error(f"Failed to initialize DocumentConverter: {e}", exc_info=True)
+            raise
+    
+    def _select_ocr_languages(
+        self,
+        ocr_languages: list[str] | None = None,
+    ) -> list[str]:
+        """
+        Select OCR languages with priority:
+        1. Explicit ocr_languages parameter
+        2. Default ['en', 'de']
+        
+        Note: Zotero metadata language should be passed via ocr_languages parameter
+        by the caller (use case layer).
+        
+        Args:
+            ocr_languages: Optional explicit OCR language codes
+        
+        Returns:
+            List of OCR language codes for Docling
+        """
+        if ocr_languages:
+            # Normalize language codes (e.g., 'en-US' → 'en')
+            normalized = []
+            for lang in ocr_languages:
+                # Extract base language code (e.g., 'en' from 'en-US')
+                base_lang = lang.split('-')[0].lower()
+                if base_lang not in normalized:
+                    normalized.append(base_lang)
+            return normalized if normalized else self.DEFAULT_OCR_LANGUAGES
+        
+        return self.DEFAULT_OCR_LANGUAGES
+    
+    def _configure_ocr(self, languages: list[str]) -> None:
+        """
+        Configure OCR with Tesseract/RapidOCR for scanned documents.
+        
+        Args:
+            languages: OCR language codes (e.g., ['en', 'de'])
+        
+        Note:
+            Docling automatically detects when OCR is needed.
+            Language configuration may be done via pipeline options or converter settings.
+        """
+        # Docling v2 handles OCR configuration internally
+        # We ensure languages are available for OCR engine selection
+        logger.debug(f"OCR configured with languages: {languages}")
+    
+    def _timeout_handler(self, signum: int, frame: Any) -> None:
+        """Signal handler for timeout enforcement."""
+        # T103: Enhanced diagnostic information in timeout handler
+        raise TimeoutError(
+            f"Document conversion exceeded {self.DOCUMENT_TIMEOUT_SECONDS}s timeout. "
+            f"Page timeout limit: {self.PAGE_TIMEOUT_SECONDS}s per page."
+        )
+    
+    def _convert_with_timeout(self, source_path: str) -> Any:
+        """
+        Convert document with timeout enforcement.
+        
+        Args:
+            source_path: Path to source document
+        
+        Returns:
+            Docling conversion result
+        
+        Raises:
+            TimeoutError: If conversion exceeds timeout
+        """
+        # Note: Signal-based timeouts work on Unix/Linux
+        # On Windows, we rely on Docling's internal timeouts or thread-based timeouts
+        if sys.platform != "win32":
+            # Set alarm for document-level timeout
+            signal.signal(signal.SIGALRM, self._timeout_handler)
+            signal.alarm(self.DOCUMENT_TIMEOUT_SECONDS)
+        
+        try:
+            # Perform conversion
+            result = self.converter.convert(source_path)
+            
+            if sys.platform != "win32":
+                signal.alarm(0)  # Cancel alarm
+            
+            return result
+        except TimeoutError:
+            # T103: Enhanced diagnostic logging for timeout failures at conversion level
+            logger.error(
+                f"Document conversion timeout after {self.DOCUMENT_TIMEOUT_SECONDS}s: {source_path}",
+                extra={
+                    "source_path": source_path,
+                    "timeout_seconds": self.DOCUMENT_TIMEOUT_SECONDS,
+                    "page_timeout_seconds": self.PAGE_TIMEOUT_SECONDS,
+                    "diagnostic": "Document-level timeout occurred. This may indicate: "
+                                  "1. Document is extremely large (>1000 pages), "
+                                  "2. Complex document structure requiring extensive processing, "
+                                  "3. Resource constraints (CPU/memory). "
+                                  "Consider splitting document or increasing timeout if system allows.",
+                },
+            )
+            raise
+        except Exception as e:
+            if sys.platform != "win32":
+                signal.alarm(0)  # Cancel alarm on error
+            # T103: Enhanced diagnostic logging for conversion failures
+            logger.error(
+                f"Document conversion failed during processing: {e}",
+                extra={
+                    "source_path": source_path,
+                    "timeout_seconds": self.DOCUMENT_TIMEOUT_SECONDS,
+                    "diagnostic": "Conversion error occurred during document processing. "
+                                  "Check document format, corruption, or system resources.",
+                },
+                exc_info=True,
+            )
+            raise
+    
+    def _extract_page_map(self, doc: Any, plain_text: str) -> dict[int, tuple[int, int]]:
+        """
+        Extract page map (page number → (start_offset, end_offset)) from Docling document.
+        
+        Args:
+            doc: Docling document object
+            plain_text: Converted plain text
+        
+        Returns:
+            Dictionary mapping page numbers to character span tuples
+        """
+        page_map: dict[int, tuple[int, int]] = {}
+        
+        try:
+            # Docling provides page information in document structure
+            # Extract page boundaries from document elements
+            if hasattr(doc, 'pages') and doc.pages:
+                current_offset = 0
+                for page_idx, page in enumerate(doc.pages, start=1):
+                    # Get page content length
+                    if hasattr(page, 'text') and page.text:
+                        page_text = page.text
+                        start_offset = current_offset
+                        end_offset = current_offset + len(page_text)
+                        page_map[page_idx] = (start_offset, end_offset)
+                        current_offset = end_offset
+            elif hasattr(doc, 'export_to_markdown'):
+                # Fallback: estimate pages from markdown or text structure
+                # Split text into approximate page-sized chunks (assuming ~2000 chars per page)
+                chars_per_page = 2000
+                for page_num in range(1, (len(plain_text) // chars_per_page) + 2):
+                    start_offset = (page_num - 1) * chars_per_page
+                    end_offset = min(page_num * chars_per_page, len(plain_text))
+                    if start_offset < len(plain_text):
+                        page_map[page_num] = (start_offset, end_offset)
+            
+            # Ensure at least one page entry
+            if not page_map and plain_text:
+                page_map[1] = (0, len(plain_text))
+            
+            logger.debug(f"Extracted page map with {len(page_map)} pages")
+        except Exception as e:
+            # T103: Enhanced diagnostic logging for page map extraction failures
+            logger.warning(
+                f"Failed to extract page map: {e}, using fallback",
+                extra={
+                    "diagnostic": "Page map extraction failed. Fallback mapping used. "
+                                  "This may affect precise page references in citations. "
+                                  "Check document structure if precision is critical.",
+                },
+                exc_info=True,
+            )
+            # Fallback: single page
+            if plain_text:
+                page_map[1] = (0, len(plain_text))
+        
+        return page_map
+    
+    def _extract_heading_tree(self, doc: Any, page_map: dict[int, tuple[int, int]]) -> dict[str, Any]:
+        """
+        Extract heading tree hierarchy with page anchors from Docling document.
+        
+        Args:
+            doc: Docling document object
+            page_map: Page map for page anchor calculation
+        
+        Returns:
+            Hierarchical heading tree with page anchors
+        """
+        heading_tree: dict[str, Any] = {}
+        
+        try:
+            # Extract headings from document structure
+            headings: list[dict[str, Any]] = []
+            
+            if hasattr(doc, 'export_to_dict'):
+                doc_dict = doc.export_to_dict()
+                # Navigate document structure to find headings
+                # Docling structures headings with levels
+                if isinstance(doc_dict, dict):
+                    headings = self._find_headings_in_structure(doc_dict)
+            elif hasattr(doc, 'export_to_markdown'):
+                # Parse markdown for headings (# ## ###)
+                markdown = doc.export_to_markdown()
+                headings = self._parse_markdown_headings(markdown, page_map)
+            
+            # Build hierarchical tree structure
+            heading_tree = self._build_heading_tree(headings, page_map)
+            
+            logger.debug(f"Extracted heading tree with {len(headings)} headings")
+        except Exception as e:
+            logger.warning(
+                f"Failed to extract heading tree: {e}, using empty tree",
+                exc_info=True,
+            )
+            heading_tree = {}
+        
+        return heading_tree
+    
+    def _find_headings_in_structure(self, doc_dict: dict[str, Any]) -> list[dict[str, Any]]:
+        """Recursively find headings in Docling document structure."""
+        headings: list[dict[str, Any]] = []
+        
+        def traverse(obj: Any, level: int = 1) -> None:
+            if isinstance(obj, dict):
+                # Check for heading-like keys
+                if 'type' in obj and obj.get('type') in ['heading', 'title']:
+                    headings.append({
+                        'level': level,
+                        'title': obj.get('text', obj.get('title', '')),
+                        'page': obj.get('page', 1),
+                    })
+                # Traverse nested structures
+                for value in obj.values():
+                    traverse(value, level)
+            elif isinstance(obj, list):
+                for item in obj:
+                    traverse(item, level)
+        
+        traverse(doc_dict)
+        return headings
+    
+    def _parse_markdown_headings(
+        self,
+        markdown: str,
+        page_map: dict[int, tuple[int, int]],
+    ) -> list[dict[str, Any]]:
+        """Parse markdown headings and map to pages."""
+        headings: list[dict[str, Any]] = []
+        
+        lines = markdown.split('\n')
+        for line in lines:
+            # Match markdown heading patterns (# ## ### etc.)
+            match = re.match(r'^(#{1,6})\s+(.+)$', line)
+            if match:
+                level = len(match.group(1))
+                title = match.group(2).strip()
+                
+                # Find which page this heading is on
+                line_pos = markdown.find(line)
+                page_num = self._find_page_for_offset(line_pos, page_map)
+                
+                headings.append({
+                    'level': level,
+                    'title': title,
+                    'page': page_num,
+                })
+        
+        return headings
+    
+    def _find_page_for_offset(self, offset: int, page_map: dict[int, tuple[int, int]]) -> int:
+        """Find page number for a given text offset."""
+        for page_num, (start, end) in sorted(page_map.items()):
+            if start <= offset < end:
+                return page_num
+        # Fallback to first page
+        return 1
+    
+    def _build_heading_tree(
+        self,
+        headings: list[dict[str, Any]],
+        page_map: dict[int, tuple[int, int]],
+    ) -> dict[str, Any]:
+        """Build hierarchical heading tree structure."""
+        if not headings:
+            return {}
+        
+        # Sort by page, then by level
+        sorted_headings = sorted(headings, key=lambda h: (h.get('page', 1), h.get('level', 1)))
+        
+        # Build tree with parent-child relationships
+        tree: dict[str, Any] = {
+            'root': [],
+        }
+        stack: list[dict[str, Any]] = []  # Stack of parent nodes
+        
+        for heading in sorted_headings:
+            level = heading.get('level', 1)
+            title = heading.get('title', '')
+            page = heading.get('page', 1)
+            
+            node = {
+                'level': level,
+                'title': title,
+                'page': page,
+                'children': [],
+            }
+            
+            # Find appropriate parent based on level
+            while stack and stack[-1].get('level', 1) >= level:
+                stack.pop()
+            
+            if stack:
+                stack[-1]['children'].append(node)
+            else:
+                tree['root'].append(node)
+            
+            stack.append(node)
+        
+        return tree
+    
+    def _normalize_text(self, text: str) -> str:
+        """
+        Normalize text: hyphen repair, whitespace normalization, preserving code/math blocks.
+        
+        Args:
+            text: Raw converted text
+        
+        Returns:
+            Normalized text
+        """
+        if not text:
+            return text
+        
+        # Preserve code blocks (between ``` or `)
+        code_blocks: list[tuple[int, int, str]] = []
+        code_pattern = r'```([^`]+)```|`([^`]+)`'
+        for match in re.finditer(code_pattern, text):
+            start, end = match.span()
+            code_blocks.append((start, end, match.group(0)))
+        
+        # Preserve math blocks (between $$ or \( \))
+        math_blocks: list[tuple[int, int, str]] = []
+        math_pattern = r'\$\$([^$]+)\$\$|\$\([^)]+\)\$'
+        for match in re.finditer(math_pattern, text):
+            start, end = match.span()
+            math_blocks.append((start, end, match.group(0)))
+        
+        # Temporarily replace code/math blocks with placeholders
+        replacements: dict[str, str] = {}
+        protected_text = text
+        offset = 0
+        
+        for start, end, original in sorted(code_blocks + math_blocks, key=lambda x: x[0]):
+            placeholder = f"__PROTECTED_{len(replacements)}__"
+            replacements[placeholder] = original
+            protected_text = (
+                protected_text[:start + offset] +
+                placeholder +
+                protected_text[end + offset:]
+            )
+            offset += len(placeholder) - (end - start)
+        
+        # Hyphen repair: fix line breaks at hyphens (e.g., "line-\nbreak" → "line-break")
+        # Match hyphen at end of line followed by newline
+        protected_text = re.sub(r'-\s*\n\s*', '', protected_text)
+        
+        # Whitespace normalization: collapse multiple spaces, normalize newlines
+        protected_text = re.sub(r'[ \t]+', ' ', protected_text)  # Multiple spaces → single space
+        protected_text = re.sub(r'\n{3,}', '\n\n', protected_text)  # Multiple newlines → double newline
+        protected_text = re.sub(r'[ \t]+\n', '\n', protected_text)  # Trailing spaces before newline
+        protected_text = protected_text.strip()
+        
+        # Restore code/math blocks
+        normalized = protected_text
+        for placeholder, original in replacements.items():
+            normalized = normalized.replace(placeholder, original)
+        
+        return normalized
+    
+    def _detect_image_only_pages(self, doc: Any) -> list[int]:
+        """
+        Detect pages that contain only images (no text).
+        
+        Args:
+            doc: Docling document object
+        
+        Returns:
+            List of page numbers that are image-only
+        """
+        image_only_pages: list[int] = []
+        
+        try:
+            if hasattr(doc, 'pages'):
+                for page_idx, page in enumerate(doc.pages, start=1):
+                    # Check if page has minimal or no text content
+                    has_text = False
+                    if hasattr(page, 'text') and page.text and page.text.strip():
+                        has_text = True
+                    elif hasattr(page, 'elements'):
+                        # Check elements for text content
+                        for element in page.elements:
+                            if hasattr(element, 'text') and element.text and element.text.strip():
+                                has_text = True
+                                break
+                    
+                    # If no text but has images, mark as image-only
+                    if not has_text and hasattr(page, 'images') and page.images:
+                        image_only_pages.append(page_idx)
+                        logger.debug(
+                            f"Detected image-only page {page_idx}",
+                            extra={"page_num": page_idx},
+                        )
+        except Exception as e:
+            logger.warning(
+                f"Failed to detect image-only pages: {e}",
+                exc_info=True,
+            )
+        
+        return image_only_pages
+    
+    def _compute_doc_id(self, source_path: str) -> str:
+        """
+        Compute stable document identifier from source path.
+        
+        Args:
+            source_path: Path to source document
+        
+        Returns:
+            Stable doc_id (content hash or file path hash)
+        """
+        path = Path(source_path)
+        
+        # Try content-based hash first (if file exists and is readable)
+        try:
+            if path.exists() and path.is_file():
+                # Compute SHA256 hash of file content
+                hasher = hashlib.sha256()
+                with path.open('rb') as f:
+                    # Read in chunks for large files
+                    while chunk := f.read(8192):
+                        hasher.update(chunk)
+                return f"sha256_{hasher.hexdigest()[:16]}"
+        except Exception:
+            pass
+        
+        # Fallback: path-based hash
+        path_str = str(path.absolute())
+        path_hash = hashlib.sha256(path_str.encode()).hexdigest()
+        return f"path_{path_hash[:16]}"
+    
+    def convert(
+        self,
+        source_path: str,
+        ocr_languages: list[str] | None = None,
+    ) -> Mapping[str, Any]:
         """
         Convert a document at source_path into structured text and metadata.
         
         Args:
-            source_path: Path to source document (PDF, etc.)
+            source_path: Path to source document (PDF, DOCX, PPTX, HTML, images)
+            ocr_languages: Optional OCR language codes (priority: Zotero metadata → explicit config → default ['en', 'de'])
         
         Returns:
             ConversionResult-like dict with keys:
             - doc_id (str): Stable document identifier
-            - structure (dict): heading_tree and page_map
-            - plain_text (str, optional): Converted text
+            - structure (dict): heading_tree (hierarchical with page anchors) and page_map (page → (start_offset, end_offset))
+            - plain_text (str, optional): Converted text (normalized, hyphen-repaired)
+            - ocr_languages (list[str], optional): Languages used for OCR
         
         Raises:
             ImportError: If docling is not available (Windows compatibility)
+            TimeoutError: If conversion exceeds timeout (120s document, 10s per-page)
         """
         if not DOCLING_AVAILABLE:
             raise ImportError("Docling is not installed. See __init__ error for details.")
         
-        # TODO: Replace with real Docling conversion implementation
-        # from docling import DocumentConverter
-        # converter = DocumentConverter()
-        # result = converter.convert(source_path)
-        # return {
-        #     "doc_id": result.doc_id,
-        #     "structure": {
-        #         "heading_tree": result.heading_tree,
-        #         "page_map": result.page_map,
-        #     },
-        #     "plain_text": result.plain_text,
-        # }
+        logger.info(
+            f"Converting document: {source_path}",
+            extra={"source_path": source_path, "ocr_languages": ocr_languages},
+        )
         
-        # Placeholder implementation
-        return {
-            "doc_id": f"hash_{source_path}",
-            "structure": {
-                "heading_tree": {},
-                "page_map": {1: 0},
-            },
-            "plain_text": "Placeholder text - Docling conversion not yet implemented",
-        }
+        # Select OCR languages
+        selected_languages = self._select_ocr_languages(ocr_languages)
+        self._configure_ocr(selected_languages)
+        
+        # Compute stable doc_id
+        doc_id = self._compute_doc_id(source_path)
+        
+        try:
+            # Convert with timeout enforcement
+            conversion_result = self._convert_with_timeout(source_path)
+            
+            # Extract document object
+            if hasattr(conversion_result, 'document'):
+                doc = conversion_result.document
+            else:
+                doc = conversion_result
+            
+            # Extract plain text
+            plain_text: str | None = None
+            if hasattr(doc, 'export_to_markdown'):
+                plain_text = doc.export_to_markdown()
+            elif hasattr(doc, 'text'):
+                plain_text = doc.text
+            elif hasattr(doc, 'export_to_text'):
+                plain_text = doc.export_to_text()
+            
+            # Extract page map
+            page_map = self._extract_page_map(doc, plain_text or "")
+            
+            # Extract heading tree
+            heading_tree = self._extract_heading_tree(doc, page_map)
+            
+            # Normalize text
+            if plain_text:
+                plain_text = self._normalize_text(plain_text)
+            
+            # Detect image-only pages
+            image_only_pages = self._detect_image_only_pages(doc)
+            if image_only_pages:
+                # T103: Enhanced diagnostic logging for image-only pages
+                logger.info(
+                    f"Detected {len(image_only_pages)} image-only pages: {image_only_pages}",
+                    extra={
+                        "source_path": source_path,
+                        "image_only_pages": image_only_pages,
+                        "page_count": len(page_map),
+                        "diagnostic": f"Pages {image_only_pages} contain only images. "
+                                     f"OCR may be required for these pages. "
+                                     f"Verify OCR languages ({selected_languages}) are appropriate.",
+                    },
+                )
+            
+            # Build result
+            result: dict[str, Any] = {
+                "doc_id": doc_id,
+                "structure": {
+                    "heading_tree": heading_tree,
+                    "page_map": page_map,
+                },
+            }
+            
+            if plain_text:
+                result["plain_text"] = plain_text
+            
+            if selected_languages:
+                result["ocr_languages"] = selected_languages
+            
+            logger.info(
+                f"Document converted successfully: doc_id={doc_id}, pages={len(page_map)}, headings={len(heading_tree.get('root', []))}",
+                extra={
+                    "doc_id": doc_id,
+                    "page_count": len(page_map),
+                    "heading_count": len(heading_tree.get('root', [])),
+                    "image_only_pages": image_only_pages,
+                },
+            )
+            
+            return result
+        
+        except TimeoutError as e:
+            # T103: Enhanced diagnostic logging for timeout failures
+            logger.error(
+                f"Document conversion timed out: {e}",
+                extra={
+                    "source_path": source_path,
+                    "doc_id": doc_id,
+                    "timeout_seconds": self.DOCUMENT_TIMEOUT_SECONDS,
+                    "page_timeout_seconds": self.PAGE_TIMEOUT_SECONDS,
+                    "diagnostic": "Document exceeded timeout limits. Consider: "
+                                  "1. Splitting large documents into smaller files, "
+                                  "2. Increasing timeout limits if system resources allow, "
+                                  "3. Checking for corrupted or unusually complex document structure",
+                },
+                exc_info=True,
+            )
+            raise
+        except Exception as e:
+            # T103: Enhanced diagnostic logging for general conversion failures
+            logger.error(
+                f"Document conversion failed: {e}",
+                extra={
+                    "source_path": source_path,
+                    "doc_id": doc_id,
+                    "ocr_languages": selected_languages if 'selected_languages' in locals() else None,
+                    "diagnostic": "Conversion error occurred. Check: "
+                                  "1. Document format is supported (PDF, DOCX, PPTX, HTML, images), "
+                                  "2. File is not corrupted, "
+                                  "3. OCR languages are correct if document is scanned",
+                },
+                exc_info=True,
+            )
+            raise

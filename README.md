@@ -183,3 +183,89 @@ CiteLoom provides MCP (Model Context Protocol) server integration for AI develop
 - **`store_chunks`**: Batched upsert of chunks (100-500 chunks, 15s timeout)
 
 All tools enforce strict project filtering and return citation-ready metadata with trimmed text output.
+
+## Environment Configuration
+
+CiteLoom supports environment-based configuration for API keys and sensitive settings. This keeps secrets out of version-controlled files and enables per-environment configuration.
+
+### Setup `.env` File
+
+Create a `.env` file in the project root with your API keys:
+
+```bash
+# Optional: OpenAI API key (for OpenAI embeddings, falls back to FastEmbed if not set)
+OPENAI_API_KEY=sk-...
+
+# Optional: Qdrant API key (required for Qdrant Cloud, optional for local)
+QDRANT_API_KEY=your-qdrant-api-key
+QDRANT_URL=http://localhost:6333  # Optional: Override Qdrant URL
+
+# Zotero Configuration (for citation metadata resolution)
+# Option 1: Remote Zotero access (requires API key)
+ZOTERO_LIBRARY_ID=your-library-id
+ZOTERO_LIBRARY_TYPE=user  # or 'group'
+ZOTERO_API_KEY=your-zotero-api-key
+ZOTERO_LOCAL=false  # or omit (defaults to false)
+
+# Option 2: Local Zotero access (requires Zotero running locally)
+ZOTERO_LIBRARY_ID=1  # Typically '1' for user library
+ZOTERO_LOCAL=true
+```
+
+**Note**: The `.env` file is automatically excluded from version control via `.gitignore`. Never commit API keys to the repository.
+
+### Environment Variable Precedence
+
+Environment variables follow this precedence order (highest to lowest):
+1. **System/shell environment variables** (explicitly set in your shell)
+2. **`.env` file values** (from project root or parent directories)
+3. **Default values** (from configuration files or code defaults)
+
+This allows per-session overrides: you can set `QDRANT_API_KEY` in your shell to temporarily use a different key without modifying the `.env` file.
+
+### Zotero Configuration
+
+CiteLoom integrates with Zotero via the pyzotero API for citation metadata resolution. Configure Zotero using environment variables:
+
+#### Remote Zotero Access
+
+For remote Zotero access (synced library):
+
+```bash
+ZOTERO_LIBRARY_ID=your-library-id
+ZOTERO_LIBRARY_TYPE=user  # or 'group' for group libraries
+ZOTERO_API_KEY=your-api-key
+```
+
+**Getting your Zotero API key:**
+1. Go to [Zotero Settings → Feeds/API](https://www.zotero.org/settings/keys)
+2. Create a new API key with library access permissions
+3. Copy the API key and your user/library ID
+
+**Getting your Library ID:**
+- User library: Your user ID is shown on the [Zotero Settings page](https://www.zotero.org/settings/keys)
+- Group library: Found in the group's URL: `https://www.zotero.org/groups/{library_id}`
+
+#### Local Zotero Access
+
+For local Zotero access (requires Zotero desktop app running):
+
+```bash
+ZOTERO_LIBRARY_ID=1  # Typically '1' for user library in local mode
+ZOTERO_LOCAL=true
+```
+
+**Note**: Local access requires Zotero desktop app to be running with the local API enabled. This is useful for development or when you prefer not to use the remote API.
+
+### Optional vs Required Keys
+
+**Optional API Keys** (gracefully degrade when missing):
+- `OPENAI_API_KEY`: Falls back to FastEmbed default embeddings if not set
+- `CITELOOM_CONFIG`: Defaults to `citeloom.toml` if not set
+
+**Required API Keys** (context-dependent):
+- `QDRANT_API_KEY`: Required when using Qdrant Cloud (detected automatically)
+- `ZOTERO_LIBRARY_ID`: Required for Zotero metadata resolution
+- `ZOTERO_API_KEY`: Required for remote Zotero access (not required when `ZOTERO_LOCAL=true`)
+
+When required keys are missing, CiteLoom provides clear error messages indicating which environment variable is needed and how to configure it.
