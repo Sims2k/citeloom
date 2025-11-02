@@ -166,15 +166,15 @@
 
 ### Implementation for User Story 5
 
-- [ ] T078 [US5] Implement tag-based filtering logic with case-insensitive partial matching (substring matching) in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T079 [US5] Apply include tags with OR logic (any match selects item) in tag filtering in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T080 [US5] Apply exclude tags with ANY-match logic (any exclude tag excludes item) in tag filtering in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T081 [US5] Filter items before downloading attachments to reduce unnecessary downloads in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T082 [US5] Report zero items matching criteria and exit without error if tag filtering results in no matches in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T083 [US5] Add --zotero-tags option to ingest CLI command in src/infrastructure/cli/commands/ingest.py accepting comma-separated list of tags
-- [ ] T084 [US5] Add --exclude-tags option to ingest CLI command in src/infrastructure/cli/commands/ingest.py accepting comma-separated list of tags
-- [ ] T085 [US5] Wire --zotero-tags and --exclude-tags options to BatchImportFromZotero use case in src/infrastructure/cli/commands/ingest.py
-- [ ] T086 [US5] Support tag filters in ingest_from_source MCP tool in src/infrastructure/mcp/tools.py
+- [x] T078 [US5] Implement tag-based filtering logic with case-insensitive partial matching (substring matching) in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T079 [US5] Apply include tags with OR logic (any match selects item) in tag filtering in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T080 [US5] Apply exclude tags with ANY-match logic (any exclude tag excludes item) in tag filtering in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T081 [US5] Filter items before downloading attachments to reduce unnecessary downloads in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T082 [US5] Report zero items matching criteria and exit without error if tag filtering results in no matches in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T083 [US5] Add --zotero-tags option to ingest CLI command in src/infrastructure/cli/commands/ingest.py accepting comma-separated list of tags
+- [x] T084 [US5] Add --exclude-tags option to ingest CLI command in src/infrastructure/cli/commands/ingest.py accepting comma-separated list of tags
+- [x] T085 [US5] Wire --zotero-tags and --exclude-tags options to BatchImportFromZotero use case in src/infrastructure/cli/commands/ingest.py
+- [x] T086 [US5] Support tag filters in ingest_from_source MCP tool in src/infrastructure/mcp/tools.py
 
 **Checkpoint**: At this point, User Stories 1-5 should all work independently
 

@@ -38,6 +38,8 @@ def run(
     config_path: str = typer.Option("citeloom.toml", help="Path to citeloom.toml configuration file"),
     resume: bool = typer.Option(False, help="Resume from existing checkpoint (requires --zotero-collection)"),
     fresh: bool = typer.Option(False, help="Start fresh import even if checkpoint exists (requires --zotero-collection)"),
+    zotero_tags: str | None = typer.Option(None, help="Comma-separated list of tags to include (OR logic - any match selects item). Only valid with --zotero-collection."),
+    exclude_tags: str | None = typer.Option(None, help="Comma-separated list of tags to exclude (ANY-match logic - any exclude tag excludes item). Only valid with --zotero-collection."),
 ):
     """
     Ingest documents into a project-scoped collection.
@@ -64,6 +66,20 @@ def run(
     if resume and fresh:
         typer.echo("Error: Cannot use both --resume and --fresh flags together", err=True)
         raise typer.Exit(1)
+    
+    # Validate tag filter flags (only valid for Zotero imports)
+    if (zotero_tags or exclude_tags) and not zotero_collection:
+        typer.echo("Error: --zotero-tags and --exclude-tags are only valid with --zotero-collection", err=True)
+        raise typer.Exit(1)
+    
+    # Parse tag filters (comma-separated lists)
+    include_tags: list[str] | None = None
+    if zotero_tags:
+        include_tags = [tag.strip() for tag in zotero_tags.split(",") if tag.strip()]
+    
+    exclude_tags_list: list[str] | None = None
+    if exclude_tags:
+        exclude_tags_list = [tag.strip() for tag in exclude_tags.split(",") if tag.strip()]
     
     # Load settings
     try:
@@ -163,6 +179,10 @@ def run(
             typer.echo(f"Resuming from checkpoint: {checkpoint_path}")
         elif fresh:
             typer.echo(f"Starting fresh import (checkpoint will be ignored)")
+        if include_tags:
+            typer.echo(f"Include tags: {', '.join(include_tags)}")
+        if exclude_tags_list:
+            typer.echo(f"Exclude tags: {', '.join(exclude_tags_list)}")
         
         try:
             result = batch_import_from_zotero(
@@ -181,6 +201,8 @@ def run(
                 resume=resume,
                 correlation_id=correlation_id,
                 zotero_config=zotero_config_dict,
+                include_tags=include_tags,
+                exclude_tags=exclude_tags_list,
                 audit_dir=audit_dir,
                 checkpoints_dir=checkpoints_dir,
             )

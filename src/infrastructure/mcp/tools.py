@@ -99,6 +99,16 @@ def create_tools(settings: Settings) -> list[Tool]:
                                 "type": "string",
                                 "description": "Zotero collection key (required when source='zotero')",
                             },
+                            "include_tags": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Tags to include (OR logic - any match selects item). Case-insensitive partial matching.",
+                            },
+                            "exclude_tags": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Tags to exclude (ANY-match logic - any exclude tag excludes item). Case-insensitive partial matching.",
+                            },
                             "zotero_config": {
                                 "type": "object",
                                 "description": "Override Zotero configuration (library_id, library_type, api_key for remote, or local=true for local access)",
@@ -302,6 +312,13 @@ async def handle_ingest_from_source(arguments: dict[str, Any], settings: Setting
                 details={"source": source},
             )
         
+        # Extract tag filters
+        include_tags = options.get("include_tags")
+        exclude_tags = options.get("exclude_tags")
+        
+        # Get zotero_config from options
+        zotero_config = options.get("zotero_config")
+        
         # Initialize Zotero importer
         try:
             zotero_importer = ZoteroImporterAdapter(zotero_config=zotero_config)
@@ -339,6 +356,8 @@ async def handle_ingest_from_source(arguments: dict[str, Any], settings: Setting
                     index=index,
                     embedding_model=project_settings.embedding_model,
                     zotero_config=zotero_config,
+                    include_tags=include_tags,
+                    exclude_tags=exclude_tags,
                     audit_dir=Path(settings.paths.audit_dir),
                 ),
             )
