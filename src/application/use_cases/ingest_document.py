@@ -14,6 +14,7 @@ from ..ports.chunker import ChunkerPort
 from ..ports.metadata_resolver import MetadataResolverPort
 from ..ports.embeddings import EmbeddingPort
 from ..ports.vector_index import VectorIndexPort
+from ..ports.progress_reporter import DocumentProgressContext, ProgressReporterPort
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ def ingest_document(
     index: VectorIndexPort,
     audit_dir: Path | None = None,
     correlation_id: str | None = None,
+    progress_reporter: ProgressReporterPort | None = None,
 ) -> IngestResult:
     """
     Orchestrate document ingestion: convert → chunk → metadata → embed → upsert → audit.
@@ -40,6 +42,7 @@ def ingest_document(
         index: VectorIndexPort for vector storage
         audit_dir: Optional directory for audit JSONL logs
         correlation_id: Optional correlation ID (generated if not provided)
+        progress_reporter: Optional progress reporter for stage-level progress updates
     
     Returns:
         IngestResult with chunks_written, documents_processed, duration_seconds, embed_model, warnings
@@ -53,10 +56,20 @@ def ingest_document(
     )
     
     warnings: list[str] = []
+    doc_progress: DocumentProgressContext | None = None
+    
+    # Initialize document-level progress if reporter provided
+    source_path_obj = Path(request.source_path)
+    if progress_reporter:
+        document_name = source_path_obj.name if source_path_obj.is_file() else request.source_path
+        doc_progress = progress_reporter.start_document(
+            document_index=1,
+            total_documents=1,
+            document_name=document_name,
+        )
     
     # Step 1: Resolve metadata early to get language for OCR (before conversion)
     # Extract source hints from source path for metadata matching
-    source_path_obj = Path(request.source_path)
     title_hint = source_path_obj.stem if source_path_obj.is_file() else None
     
     resolved_meta: CitationMeta | None = None
@@ -85,6 +98,8 @@ def ingest_document(
         resolved_meta = None
     
     # Step 2: Convert document with OCR language from metadata
+    if doc_progress:
+        doc_progress.update_stage("converting", "Converting document to text")
     try:
         conversion: Mapping[str, Any] = converter.convert(
             request.source_path,
@@ -99,9 +114,13 @@ def ingest_document(
         error_msg = f"Document conversion failed: {e}"
         logger.error(error_msg, extra={"correlation_id": correlation_id}, exc_info=True)
         warnings.append(error_msg)
+        if doc_progress:
+            doc_progress.fail(error_msg)
         raise
     
     # Step 3: Chunk document
+    if doc_progress:
+        doc_progress.update_stage("chunking", "Chunking document into segments")
     try:
         from ...domain.policy.chunking_policy import ChunkingPolicy
         
@@ -117,6 +136,8 @@ def ingest_document(
         error_msg = f"Chunking failed: {e}"
         logger.error(error_msg, extra={"correlation_id": correlation_id, "doc_id": doc_id}, exc_info=True)
         warnings.append(error_msg)
+        if doc_progress:
+            doc_progress.fail(error_msg)
         raise
     
     # Metadata already resolved in Step 1, but verify we still have it
@@ -198,6 +219,8 @@ def ingest_document(
         texts.append(chunk_text)
     
     # Step 6: Generate embeddings
+    if doc_progress:
+        doc_progress.update_stage("embedding", f"Generating embeddings using {request.embedding_model}")
     try:
         model_id = request.embedding_model
         vectors = embedder.embed(texts, model_id=model_id)
@@ -215,6 +238,8 @@ def ingest_document(
         error_msg = f"Embedding generation failed: {e}"
         logger.error(error_msg, extra={"correlation_id": correlation_id, "doc_id": doc_id}, exc_info=True)
         warnings.append(error_msg)
+        if doc_progress:
+            doc_progress.fail(error_msg)
         raise
     
     # Step 5: Prepare items for storage
@@ -228,6 +253,8 @@ def ingest_document(
         to_store.append(store_item)
     
     # Step 6: Upsert to vector index
+    if doc_progress:
+        doc_progress.update_stage("storing", f"Storing {len(to_store)} chunks in vector index")
     upsert_errors: list[str] = []  # T039a: Capture errors during upsert
     try:
         index.upsert(to_store, project_id=request.project_id, model_id=model_id)
@@ -250,6 +277,8 @@ def ingest_document(
             exc_info=True,
         )
         warnings.append(error_msg)
+        if doc_progress:
+            doc_progress.fail(error_msg)
         raise
     
     # Step 8: Write audit log (FR-018)
@@ -342,6 +371,10 @@ def ingest_document(
                 f"Failed to write audit log: {e}",
                 extra={"correlation_id": correlation_id, "audit_file": str(audit_file)},
             )
+    
+    # Mark document processing as complete
+    if doc_progress:
+        doc_progress.finish()
     
     return IngestResult(
         chunks_written=len(to_store),
