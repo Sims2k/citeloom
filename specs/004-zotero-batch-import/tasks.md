@@ -144,15 +144,15 @@
 
 ### Implementation for User Story 4
 
-- [ ] T069 [US4] Implement ZoteroImporterAdapter.get_recent_items() using zot.items(sort='dateAdded', direction='desc', limit=10) in src/infrastructure/adapters/zotero_importer.py
-- [ ] T070 [US4] Implement ZoteroImporterAdapter.list_tags() using zot.tags() returning tags with usage counts in src/infrastructure/adapters/zotero_importer.py
-- [ ] T071 [US4] Create zotero CLI command group in src/infrastructure/cli/commands/zotero.py
-- [ ] T072 [US4] Implement list-collections command in src/infrastructure/cli/commands/zotero.py displaying collection names and keys with optional subcollection hierarchy
-- [ ] T073 [US4] Implement browse-collection command in src/infrastructure/cli/commands/zotero.py displaying items with titles, item types, attachment counts, and metadata summary
-- [ ] T074 [US4] Implement recent-items command in src/infrastructure/cli/commands/zotero.py displaying 10 most recently added items with titles, dates, and collection membership
-- [ ] T075 [US4] Implement list-tags command in src/infrastructure/cli/commands/zotero.py displaying all tags with usage counts
-- [ ] T076 [US4] Register zotero command group in main CLI app in src/infrastructure/cli/app.py
-- [ ] T077 [US4] Add clear error messages for Zotero connectivity failures (invalid API key, library ID, Zotero not running) in zotero CLI commands in src/infrastructure/cli/commands/zotero.py
+- [x] T069 [US4] Implement ZoteroImporterAdapter.get_recent_items() using zot.items(sort='dateAdded', direction='desc', limit=10) in src/infrastructure/adapters/zotero_importer.py
+- [x] T070 [US4] Implement ZoteroImporterAdapter.list_tags() using zot.tags() returning tags with usage counts in src/infrastructure/adapters/zotero_importer.py
+- [x] T071 [US4] Create zotero CLI command group in src/infrastructure/cli/commands/zotero.py
+- [x] T072 [US4] Implement list-collections command in src/infrastructure/cli/commands/zotero.py displaying collection names and keys with optional subcollection hierarchy
+- [x] T073 [US4] Implement browse-collection command in src/infrastructure/cli/commands/zotero.py displaying items with titles, item types, attachment counts, and metadata summary
+- [x] T074 [US4] Implement recent-items command in src/infrastructure/cli/commands/zotero.py displaying 10 most recently added items with titles, dates, and collection membership
+- [x] T075 [US4] Implement list-tags command in src/infrastructure/cli/commands/zotero.py displaying all tags with usage counts
+- [x] T076 [US4] Register zotero command group in main CLI app in src/infrastructure/cli/main.py
+- [x] T077 [US4] Add clear error messages for Zotero connectivity failures (invalid API key, library ID, Zotero not running) in zotero CLI commands in src/infrastructure/cli/commands/zotero.py
 
 **Checkpoint**: At this point, User Stories 1-4 should all work independently
 
