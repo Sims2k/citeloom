@@ -188,13 +188,13 @@
 
 ### Implementation for User Story 6
 
-- [ ] T087 [US6] Create download manifest after downloading all attachments in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T088 [US6] Save download manifest to var/zotero_downloads/{collection_key}/manifest.json in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T089 [US6] Detect existing downloads via manifest and skip download phase on retry in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T090 [US6] Create ingest download command in src/infrastructure/cli/commands/ingest.py to download attachments without processing
-- [ ] T091 [US6] Create ingest process-downloads command in src/infrastructure/cli/commands/ingest.py to process already-downloaded files using manifest
-- [ ] T092 [US6] Load download manifest and verify files exist before processing in process-downloads command in src/infrastructure/cli/commands/ingest.py
-- [ ] T093 [US6] Use checkpointing for resumability when processing downloaded files in process-downloads command in src/infrastructure/cli/commands/ingest.py
+- [x] T087 [US6] Create download manifest after downloading all attachments in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T088 [US6] Save download manifest to var/zotero_downloads/{collection_key}/manifest.json in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T089 [US6] Detect existing downloads via manifest and skip download phase on retry in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T090 [US6] Create ingest download command in src/infrastructure/cli/commands/ingest.py to download attachments without processing
+- [x] T091 [US6] Create ingest process-downloads command in src/infrastructure/cli/commands/ingest.py to process already-downloaded files using manifest
+- [x] T092 [US6] Load download manifest and verify files exist before processing in process-downloads command in src/infrastructure/cli/commands/ingest.py
+- [x] T093 [US6] Use checkpointing for resumability when processing downloaded files in process-downloads command in src/infrastructure/cli/commands/ingest.py
 
 **Checkpoint**: At this point, User Stories 1-6 should all work independently
 
