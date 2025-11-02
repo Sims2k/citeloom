@@ -57,29 +57,29 @@
 
 ### Implementation for User Story 1
 
-- [ ] T021 [US1] Create ZoteroImporterAdapter class in src/infrastructure/adapters/zotero_importer.py implementing ZoteroImporterPort
-- [ ] T022 [US1] Implement pyzotero client initialization with rate limiting wrapper (0.5s interval for web API, no limits for local) in src/infrastructure/adapters/zotero_importer.py
-- [ ] T023 [US1] Implement ZoteroImporterAdapter.list_collections() using zot.collections() with rate limiting in src/infrastructure/adapters/zotero_importer.py
-- [ ] T024 [US1] Implement ZoteroImporterAdapter.get_collection_items() using zot.collection_items() as generator/iterator in src/infrastructure/adapters/zotero_importer.py
-- [ ] T025 [US1] Add recursive subcollection support in ZoteroImporterAdapter.get_collection_items() using zot.collections_sub() in src/infrastructure/adapters/zotero_importer.py
-- [ ] T026 [US1] Implement ZoteroImporterAdapter.get_item_attachments() using zot.children(item_key) to fetch PDF attachments in src/infrastructure/adapters/zotero_importer.py
-- [ ] T027 [US1] Implement ZoteroImporterAdapter.download_attachment() using zot.file() for remote API or direct file access for local API in src/infrastructure/adapters/zotero_importer.py
-- [ ] T028 [US1] Add retry logic with exponential backoff (3 retries, 1s base delay, 30s max delay, jitter) in ZoteroImporterAdapter.download_attachment() in src/infrastructure/adapters/zotero_importer.py
-- [ ] T029 [US1] Implement ZoteroImporterAdapter.get_item_metadata() to extract title, creators (authors), date (year), DOI, tags, collections from Zotero item in src/infrastructure/adapters/zotero_importer.py
-- [ ] T030 [US1] Implement batch download of attachments (10-20 files per batch) with progress tracking in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T031 [US1] Create BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py orchestrating collection fetch, item fetch, attachment download, and processing pipeline, generating correlation ID at start for checkpoint file naming (FR-029)
-- [ ] T032 [US1] Implement two-phase import workflow (download all attachments first, then process) in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T033 [US1] Create download manifest after downloading all attachments in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T034 [US1] Process all PDF attachments from an item as separate documents (FR-028) in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T035 [US1] Skip items without PDF attachments with appropriate logging in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T036 [US1] Preserve Zotero item metadata (citekey, title, authors, year, DOI, tags, collections) in chunk payloads during import in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T037 [US1] Use existing ZoteroPyzoteroResolver for metadata extraction (reuse existing resolver) in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T038 [US1] Enhance ingest CLI command in src/infrastructure/cli/commands/ingest.py to accept --zotero-collection option (collection name or key)
-- [ ] T039 [US1] Wire --zotero-collection option to BatchImportFromZotero use case in src/infrastructure/cli/commands/ingest.py
-- [ ] T040 [US1] Handle ZoteroImporterAdapter.find_collection_by_name() for collection name resolution in src/infrastructure/cli/commands/ingest.py
-- [ ] T041 [US1] Use local Zotero API when available (local=True) with fallback to remote API in ZoteroImporterAdapter initialization in src/infrastructure/adapters/zotero_importer.py
-- [ ] T042 [US1] Update MCP tool ingest_from_source in src/infrastructure/mcp/tools.py to replace NOT_IMPLEMENTED placeholder for Zotero import with actual implementation
-- [ ] T043 [US1] Support collection_key option in ingest_from_source MCP tool in src/infrastructure/mcp/tools.py for Zotero imports
+- [x] T021 [US1] Create ZoteroImporterAdapter class in src/infrastructure/adapters/zotero_importer.py implementing ZoteroImporterPort
+- [x] T022 [US1] Implement pyzotero client initialization with rate limiting wrapper (0.5s interval for web API, no limits for local) in src/infrastructure/adapters/zotero_importer.py
+- [x] T023 [US1] Implement ZoteroImporterAdapter.list_collections() using zot.collections() with rate limiting in src/infrastructure/adapters/zotero_importer.py
+- [x] T024 [US1] Implement ZoteroImporterAdapter.get_collection_items() using zot.collection_items() as generator/iterator in src/infrastructure/adapters/zotero_importer.py
+- [x] T025 [US1] Add recursive subcollection support in ZoteroImporterAdapter.get_collection_items() using zot.collections_sub() in src/infrastructure/adapters/zotero_importer.py
+- [x] T026 [US1] Implement ZoteroImporterAdapter.get_item_attachments() using zot.children(item_key) to fetch PDF attachments in src/infrastructure/adapters/zotero_importer.py
+- [x] T027 [US1] Implement ZoteroImporterAdapter.download_attachment() using zot.file() for remote API or direct file access for local API in src/infrastructure/adapters/zotero_importer.py
+- [x] T028 [US1] Add retry logic with exponential backoff (3 retries, 1s base delay, 30s max delay, jitter) in ZoteroImporterAdapter.download_attachment() in src/infrastructure/adapters/zotero_importer.py
+- [x] T029 [US1] Implement ZoteroImporterAdapter.get_item_metadata() to extract title, creators (authors), date (year), DOI, tags, collections from Zotero item in src/infrastructure/adapters/zotero_importer.py
+- [x] T030 [US1] Implement batch download of attachments (10-20 files per batch) with progress tracking in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T031 [US1] Create BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py orchestrating collection fetch, item fetch, attachment download, and processing pipeline, generating correlation ID at start for checkpoint file naming (FR-029)
+- [x] T032 [US1] Implement two-phase import workflow (download all attachments first, then process) in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T033 [US1] Create download manifest after downloading all attachments in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T034 [US1] Process all PDF attachments from an item as separate documents (FR-028) in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T035 [US1] Skip items without PDF attachments with appropriate logging in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T036 [US1] Preserve Zotero item metadata (citekey, title, authors, year, DOI, tags, collections) in chunk payloads during import in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T037 [US1] Use existing ZoteroPyzoteroResolver for metadata extraction (reuse existing resolver) in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T038 [US1] Enhance ingest CLI command in src/infrastructure/cli/commands/ingest.py to accept --zotero-collection option (collection name or key)
+- [x] T039 [US1] Wire --zotero-collection option to BatchImportFromZotero use case in src/infrastructure/cli/commands/ingest.py
+- [x] T040 [US1] Handle ZoteroImporterAdapter.find_collection_by_name() for collection name resolution in src/infrastructure/cli/commands/ingest.py
+- [x] T041 [US1] Use local Zotero API when available (local=True) with fallback to remote API in ZoteroImporterAdapter initialization in src/infrastructure/adapters/zotero_importer.py
+- [x] T042 [US1] Update MCP tool ingest_from_source in src/infrastructure/mcp/tools.py to replace NOT_IMPLEMENTED placeholder for Zotero import with actual implementation
+- [x] T043 [US1] Support collection_key option in ingest_from_source MCP tool in src/infrastructure/mcp/tools.py for Zotero imports
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
