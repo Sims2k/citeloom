@@ -204,20 +204,20 @@
 
 **Purpose**: Cleanup, error handling improvements, and user-controlled checkpoint/manifest cleanup
 
-- [ ] T094 [US1,US3,US6] Add user-controlled checkpoint and manifest cleanup via --keep-checkpoints and --cleanup-checkpoints flags in src/infrastructure/cli/commands/ingest.py (default: retain)
-- [ ] T095 [US1,US3,US6] Implement checkpoint cleanup logic (delete checkpoint files if --cleanup-checkpoints flag set) in src/infrastructure/cli/commands/ingest.py after successful import
-- [ ] T096 [US1,US3,US6] Implement manifest cleanup logic (delete manifest and downloaded files if --cleanup-checkpoints flag set) in src/infrastructure/cli/commands/ingest.py after successful import
-- [ ] T097 [US1,US2,US3,US6] Add comprehensive error handling for empty collections, network interruptions, corrupted PDFs, and collection name typos in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T098 [US3] Handle checkpoint file deletion/movement during processing gracefully in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T099 [US3] Handle concurrent import processes (warn user, prevent checkpoint corruption) in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T100 [US1,US3,US6] Add integration tests for ZoteroImporterAdapter in tests/integration/test_zotero_importer.py covering collection browsing, item fetching, file downloads, rate limiting, and retry logic
-- [ ] T101 [US3] Add integration tests for CheckpointManagerAdapter in tests/integration/test_checkpoint_manager.py covering checkpoint I/O, atomic writes, validation, and resume logic
-- [ ] T102 [US2] Add integration tests for RichProgressReporterAdapter in tests/integration/test_progress_indication.py covering progress bars, time estimates, and non-interactive mode fallback
-- [ ] T103 [US1,US2,US3,US6] Add unit tests for checkpoint domain models in tests/unit/test_checkpoint_models.py covering validation rules, state transitions, and serialization
-- [ ] T104 [US1,US6] Add unit tests for download manifest domain models in tests/unit/test_download_manifest.py covering validation rules and serialization
-- [ ] T105 [US1,US2,US3,US6] Add end-to-end tests for full import workflow (browse → import → resume) in tests/integration/test_zotero_batch_import.py
-- [ ] T106 [US5] Add integration tests for tag-based filtering in tests/integration/test_tag_filtering.py covering case-insensitive partial matching, OR logic for includes, ANY-match for excludes
-- [ ] T107 [US6] Add integration tests for two-phase import in tests/integration/test_two_phase_import.py covering download manifest creation, retry without re-download, and process-downloads command
+- [x] T094 [US1,US3,US6] Add user-controlled checkpoint and manifest cleanup via --keep-checkpoints and --cleanup-checkpoints flags in src/infrastructure/cli/commands/ingest.py (default: retain)
+- [x] T095 [US1,US3,US6] Implement checkpoint cleanup logic (delete checkpoint files if --cleanup-checkpoints flag set) in src/infrastructure/cli/commands/ingest.py after successful import
+- [x] T096 [US1,US3,US6] Implement manifest cleanup logic (delete manifest and downloaded files if --cleanup-checkpoints flag set) in src/infrastructure/cli/commands/ingest.py after successful import
+- [x] T097 [US1,US2,US3,US6] Add comprehensive error handling for empty collections, network interruptions, corrupted PDFs, and collection name typos in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T098 [US3] Handle checkpoint file deletion/movement during processing gracefully in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T099 [US3] Handle concurrent import processes (warn user, prevent checkpoint corruption) in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T100 [US1,US3,US6] Add integration tests for ZoteroImporterAdapter in tests/integration/test_zotero_importer.py covering collection browsing, item fetching, file downloads, rate limiting, and retry logic
+- [x] T101 [US3] Add integration tests for CheckpointManagerAdapter in tests/integration/test_checkpoint_manager.py covering checkpoint I/O, atomic writes, validation, and resume logic
+- [x] T102 [US2] Add integration tests for RichProgressReporterAdapter in tests/integration/test_progress_indication.py covering progress bars, time estimates, and non-interactive mode fallback
+- [x] T103 [US1,US2,US3,US6] Add unit tests for checkpoint domain models in tests/unit/test_checkpoint_models.py covering validation rules, state transitions, and serialization
+- [x] T104 [US1,US6] Add unit tests for download manifest domain models in tests/unit/test_download_manifest.py covering validation rules and serialization
+- [x] T105 [US1,US2,US3,US6] Add end-to-end tests for full import workflow (browse → import → resume) in tests/integration/test_zotero_batch_import.py
+- [x] T106 [US5] Add integration tests for tag-based filtering in tests/integration/test_tag_filtering.py covering case-insensitive partial matching, OR logic for includes, ANY-match for excludes
+- [x] T107 [US6] Add integration tests for two-phase import in tests/integration/test_two_phase_import.py covering download manifest creation, retry without re-download, and process-downloads command
 
 ---
 

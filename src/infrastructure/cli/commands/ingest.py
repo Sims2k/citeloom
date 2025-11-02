@@ -44,6 +44,8 @@ def run(
     fresh: bool = typer.Option(False, help="Start fresh import even if checkpoint exists (requires --zotero-collection)"),
     zotero_tags: str | None = typer.Option(None, help="Comma-separated list of tags to include (OR logic - any match selects item). Only valid with --zotero-collection."),
     exclude_tags: str | None = typer.Option(None, help="Comma-separated list of tags to exclude (ANY-match logic - any exclude tag excludes item). Only valid with --zotero-collection."),
+    cleanup_checkpoints: bool = typer.Option(False, help="Delete checkpoint files after successful import (default: retain checkpoints)"),
+    keep_checkpoints: bool = typer.Option(False, help="Explicitly keep checkpoint files (default: retain checkpoints). Mutually exclusive with --cleanup-checkpoints."),
 ):
     """
     Ingest documents into a project-scoped collection.
@@ -69,6 +71,10 @@ def run(
     
     if resume and fresh:
         typer.echo("Error: Cannot use both --resume and --fresh flags together", err=True)
+        raise typer.Exit(1)
+    
+    if cleanup_checkpoints and keep_checkpoints:
+        typer.echo("Error: Cannot use both --cleanup-checkpoints and --keep-checkpoints flags together", err=True)
         raise typer.Exit(1)
     
     # Validate tag filter flags (only valid for Zotero imports)
@@ -127,13 +133,40 @@ def run(
             # Looks like a collection key (8 alphanumeric chars)
             collection_key = zotero_collection
         else:
-            # Try to find by name
-            collection_info = zotero_importer.find_collection_by_name(zotero_collection)
-            if collection_info:
-                collection_key = collection_info.get("key")
-                collection_name = collection_info.get("name", zotero_collection)
-            else:
-                typer.echo(f"Error: Collection '{zotero_collection}' not found", err=True)
+            # Try to find by name (enhanced error handling for typos)
+            try:
+                collection_info = zotero_importer.find_collection_by_name(zotero_collection)
+                if collection_info:
+                    collection_key = collection_info.get("key")
+                    collection_name = collection_info.get("name", zotero_collection)
+                else:
+                    # Collection name not found - suggest checking for typos
+                    error_msg = (
+                        f"Error: Collection '{zotero_collection}' not found.\n"
+                        f"Hint: The collection name may be misspelled or may not exist. "
+                        f"Use 'citeloom zotero list-collections' to see available collections."
+                    )
+                    typer.echo(error_msg, err=True)
+                    raise typer.Exit(1)
+            except Exception as e:
+                # Enhanced error handling for collection name typos and API errors
+                error_str = str(e).lower()
+                if "not found" in error_str or "404" in error_str:
+                    error_msg = (
+                        f"Error: Collection '{zotero_collection}' not found.\n"
+                        f"Hint: The collection name may be misspelled. "
+                        f"Use 'citeloom zotero list-collections' to see available collections.\n"
+                        f"Details: {e}"
+                    )
+                elif "connection" in error_str or "network" in error_str or "timeout" in error_str:
+                    error_msg = (
+                        f"Error: Failed to connect to Zotero while searching for collection '{zotero_collection}'.\n"
+                        f"Please check your internet connection and Zotero configuration.\n"
+                        f"Details: {e}"
+                    )
+                else:
+                    error_msg = f"Error: Failed to resolve collection '{zotero_collection}': {e}"
+                typer.echo(error_msg, err=True)
                 raise typer.Exit(1)
         
         # Get audit directory from settings
@@ -211,13 +244,56 @@ def run(
                 checkpoints_dir=checkpoints_dir,
             )
             
+            # Cleanup logic: delete checkpoint and manifest if --cleanup-checkpoints is set
+            cleanup_performed = False
+            if cleanup_checkpoints:
+                # Determine if import was successful (no errors or errors are non-critical)
+                import_successful = len(result.get('errors', [])) == 0 or (
+                    len(result.get('errors', [])) > 0 and 
+                    result.get('total_documents', 0) > 0  # At least some documents succeeded
+                )
+                
+                if import_successful:
+                    # Cleanup checkpoint
+                    if result.get('checkpoint_path'):
+                        checkpoint_path_to_clean = Path(result['checkpoint_path'])
+                        try:
+                            if checkpoint_path_to_clean.exists():
+                                checkpoint_path_to_clean.unlink()
+                                typer.echo(f"Cleaned up checkpoint: {checkpoint_path_to_clean}")
+                                cleanup_performed = True
+                        except Exception as e:
+                            typer.echo(f"Warning: Failed to cleanup checkpoint {checkpoint_path_to_clean}: {e}", err=True)
+                    
+                    # Cleanup manifest and downloaded files
+                    if result.get('manifest_path'):
+                        manifest_path_to_clean = Path(result['manifest_path'])
+                        try:
+                            # Delete manifest file
+                            if manifest_path_to_clean.exists():
+                                manifest_path_to_clean.unlink()
+                            
+                            # Delete downloaded files directory
+                            downloads_dir = manifest_path_to_clean.parent
+                            if downloads_dir.exists() and downloads_dir.is_dir():
+                                import shutil
+                                shutil.rmtree(downloads_dir)
+                                typer.echo(f"Cleaned up downloads directory: {downloads_dir}")
+                                cleanup_performed = True
+                        except Exception as e:
+                            typer.echo(f"Warning: Failed to cleanup manifest/downloads {manifest_path_to_clean.parent}: {e}", err=True)
+                else:
+                    typer.echo("Skipping cleanup: import completed with errors", err=True)
+            
             typer.echo(f"\n{'='*60}")
             typer.echo(f"correlation_id={result['correlation_id']}")
             typer.echo(f"Collection: {result['collection_name']}")
             typer.echo(f"Imported {result['chunks_written']} chunks from {result['total_documents']} document(s)")
             typer.echo(f"Duration: {result['duration_seconds']:.2f} seconds")
-            if result.get('checkpoint_path'):
+            if result.get('checkpoint_path') and not cleanup_checkpoints:
                 typer.echo(f"Checkpoint: {result['checkpoint_path']}")
+            if cleanup_performed:
+                typer.echo("Cleanup: Checkpoint and downloaded files removed")
             
             if result['warnings']:
                 typer.echo(f"\nWarnings ({len(result['warnings'])}):")
@@ -495,6 +571,8 @@ def process_downloads(
     resume: bool = typer.Option(False, help="Resume from existing checkpoint"),
     fresh: bool = typer.Option(False, help="Start fresh processing even if checkpoint exists"),
     zotero_config: str | None = typer.Option(None, help="Zotero configuration (JSON string or env vars will be used)"),
+    cleanup_checkpoints: bool = typer.Option(False, help="Delete checkpoint files after successful processing (default: retain checkpoints)"),
+    keep_checkpoints: bool = typer.Option(False, help="Explicitly keep checkpoint files (default: retain checkpoints). Mutually exclusive with --cleanup-checkpoints."),
 ):
     """
     Process already-downloaded files from a Zotero collection manifest.
@@ -507,6 +585,10 @@ def process_downloads(
     
     if resume and fresh:
         typer.echo("Error: Cannot use both --resume and --fresh flags together", err=True)
+        raise typer.Exit(1)
+    
+    if cleanup_checkpoints and keep_checkpoints:
+        typer.echo("Error: Cannot use both --cleanup-checkpoints and --keep-checkpoints flags together", err=True)
         raise typer.Exit(1)
     
     # Generate correlation ID
@@ -615,13 +697,38 @@ def process_downloads(
             checkpoints_dir=checkpoints_dir,
         )
         
+        # Cleanup logic: delete checkpoint if --cleanup-checkpoints is set
+        cleanup_performed = False
+        if cleanup_checkpoints:
+            # Determine if processing was successful
+            import_successful = len(result.get('errors', [])) == 0 or (
+                len(result.get('errors', [])) > 0 and 
+                result.get('total_documents', 0) > 0  # At least some documents succeeded
+            )
+            
+            if import_successful:
+                # Cleanup checkpoint
+                if result.get('checkpoint_path'):
+                    checkpoint_path_to_clean = Path(result['checkpoint_path'])
+                    try:
+                        if checkpoint_path_to_clean.exists():
+                            checkpoint_path_to_clean.unlink()
+                            typer.echo(f"Cleaned up checkpoint: {checkpoint_path_to_clean}")
+                            cleanup_performed = True
+                    except Exception as e:
+                        typer.echo(f"Warning: Failed to cleanup checkpoint {checkpoint_path_to_clean}: {e}", err=True)
+            else:
+                typer.echo("Skipping cleanup: processing completed with errors", err=True)
+        
         typer.echo(f"\n{'='*60}")
         typer.echo(f"correlation_id={result['correlation_id']}")
         typer.echo(f"Collection: {result['collection_name']}")
         typer.echo(f"Processed {result['chunks_written']} chunks from {result['total_documents']} document(s)")
         typer.echo(f"Duration: {result['duration_seconds']:.2f} seconds")
-        if result.get('checkpoint_path'):
+        if result.get('checkpoint_path') and not cleanup_checkpoints:
             typer.echo(f"Checkpoint: {result['checkpoint_path']}")
+        if cleanup_performed:
+            typer.echo("Cleanup: Checkpoint removed")
         
         if result['warnings']:
             typer.echo(f"\nWarnings ({len(result['warnings'])}):")

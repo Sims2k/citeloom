@@ -302,12 +302,47 @@ def batch_import_from_zotero(
             )
             items_to_process = list(items_iterator)
             
+            # Check for empty collections
+            if not items_to_process:
+                error_msg = f"Collection '{collection_name}' is empty (no items found)"
+                logger.warning(error_msg, extra={"correlation_id": correlation_id, "collection_key": collection_key})
+                warnings.append(error_msg)
+                return {
+                    "correlation_id": correlation_id,
+                    "collection_key": collection_key,
+                    "collection_name": collection_name,
+                    "total_items": 0,
+                    "total_attachments": 0,
+                    "total_documents": 0,
+                    "chunks_written": 0,
+                    "duration_seconds": (datetime.now() - start_time).total_seconds(),
+                    "manifest_path": None,
+                    "checkpoint_path": str(checkpoint_path) if checkpoint_path else None,
+                    "warnings": warnings,
+                    "errors": errors,
+                }
+            
             logger.info(
                 f"Found {len(items_to_process)} items in collection",
                 extra={"correlation_id": correlation_id, "item_count": len(items_to_process)},
             )
         except Exception as e:
-            error_msg = f"Failed to fetch collection items: {e}"
+            # Enhanced error handling for network interruptions and API failures
+            error_type = type(e).__name__
+            error_msg_base = f"Failed to fetch collection items from '{collection_name}': {e}"
+            
+            # Detect network-related errors
+            if "Connection" in error_type or "timeout" in str(e).lower() or "network" in str(e).lower():
+                error_msg = f"{error_msg_base} (network interruption detected). Please check your internet connection and try again."
+            elif "401" in str(e) or "Unauthorized" in str(e):
+                error_msg = f"{error_msg_base} (authentication failed). Please verify your Zotero API key and library ID."
+            elif "404" in str(e) or "Not Found" in str(e):
+                error_msg = f"{error_msg_base} (collection not found). Please verify the collection name or key is correct."
+            elif "429" in str(e) or "rate limit" in str(e).lower():
+                error_msg = f"{error_msg_base} (rate limit exceeded). Please wait a few moments and try again."
+            else:
+                error_msg = error_msg_base
+            
             logger.error(error_msg, extra={"correlation_id": correlation_id}, exc_info=True)
             errors.append(error_msg)
             raise
@@ -672,12 +707,37 @@ def batch_import_from_zotero(
                 # Save checkpoint after each document completes (enables fine-grained resume)
                 if checkpoint and checkpoint_manager:
                     try:
+                        # Check for concurrent import processes (T099)
+                        # If checkpoint file exists but was modified recently by another process, warn user
+                        if checkpoint_path.exists():
+                            import os
+                            file_stat = checkpoint_path.stat()
+                            # If file was modified in the last 5 seconds, might be another process
+                            import time
+                            time_since_mod = time.time() - file_stat.st_mtime
+                            if 0 < time_since_mod < 5:
+                                warning_msg = (
+                                    f"Warning: Checkpoint file was recently modified. "
+                                    f"Another import process may be running. "
+                                    f"Concurrent imports can cause checkpoint corruption. "
+                                    f"Please ensure only one import process runs at a time."
+                                )
+                                warnings.append(warning_msg)
+                                logger.warning(
+                                    warning_msg,
+                                    extra={
+                                        "correlation_id": correlation_id,
+                                        "checkpoint_path": str(checkpoint_path),
+                                        "time_since_mod": time_since_mod,
+                                    },
+                                )
+                        
                         checkpoint_manager.save_checkpoint(checkpoint, checkpoint_path)
                     except Exception as e:
                         warning_msg = f"Failed to save checkpoint after document: {e}"
                         warnings.append(warning_msg)
                         logger.warning(warning_msg, extra={"correlation_id": correlation_id}, exc_info=True)
-                        # Try to recreate checkpoint if file disappeared
+                        # Try to recreate checkpoint if file disappeared (T098)
                         try:
                             # Check if file still exists
                             if not checkpoint_path.exists():
@@ -685,6 +745,8 @@ def batch_import_from_zotero(
                                     "Checkpoint file disappeared, recreating",
                                     extra={"correlation_id": correlation_id, "checkpoint_path": str(checkpoint_path)},
                                 )
+                                # Ensure directory exists before recreating
+                                checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
                                 checkpoint_manager.save_checkpoint(checkpoint, checkpoint_path)
                         except Exception:
                             pass  # Ignore errors on recreate attempt
@@ -704,23 +766,59 @@ def batch_import_from_zotero(
                         logger.warning(warning_msg, extra={"correlation_id": correlation_id}, exc_info=True)
                 
             except Exception as e:
-                error_msg = f"Failed to process document {file_path}: {e}"
+                # Enhanced error handling for corrupted PDFs and processing errors
+                error_type = type(e).__name__
+                error_str = str(e).lower()
+                
+                # Detect corrupted PDF errors
+                if "corrupt" in error_str or "invalid" in error_str or "cannot read" in error_str or "pdf" in error_type.lower():
+                    error_msg = f"Failed to process document {file_path.name}: Corrupted or invalid PDF file ({e})"
+                elif "timeout" in error_str:
+                    error_msg = f"Failed to process document {file_path.name}: Processing timeout ({e})"
+                elif "memory" in error_str or "MemoryError" in error_type:
+                    error_msg = f"Failed to process document {file_path.name}: Insufficient memory ({e})"
+                else:
+                    error_msg = f"Failed to process document {file_path.name}: {e}"
+                
                 errors.append(error_msg)
                 logger.error(error_msg, extra={"correlation_id": correlation_id, "file_path": str(file_path)}, exc_info=True)
                 
                 # Update checkpoint: mark as failed
                 if checkpoint:
-                    doc_checkpoint.mark_failed(error=str(e))
+                    doc_checkpoint.mark_failed(error=error_msg)
                     checkpoint.add_document_checkpoint(doc_checkpoint)
-                    # Save checkpoint even on failure
+                    # Save checkpoint even on failure (with enhanced error handling)
                     try:
                         checkpoint_manager.save_checkpoint(checkpoint, checkpoint_path)
                     except Exception as checkpoint_err:
-                        logger.warning(
-                            f"Failed to save checkpoint after document failure: {checkpoint_err}",
-                            extra={"correlation_id": correlation_id},
-                            exc_info=True,
-                        )
+                        # Handle checkpoint file deletion/movement during processing (T098)
+                        checkpoint_err_str = str(checkpoint_err).lower()
+                        if "no such file" in checkpoint_err_str or "not found" in checkpoint_err_str or "permission" in checkpoint_err_str:
+                            # Checkpoint file may have been deleted or moved
+                            logger.warning(
+                                f"Checkpoint file may have been deleted or moved during processing. Attempting to recreate.",
+                                extra={
+                                    "correlation_id": correlation_id,
+                                    "checkpoint_path": str(checkpoint_path),
+                                    "error": str(checkpoint_err),
+                                },
+                            )
+                            # Try to recreate checkpoint directory and file
+                            try:
+                                checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+                                checkpoint_manager.save_checkpoint(checkpoint, checkpoint_path)
+                            except Exception as recreate_err:
+                                logger.error(
+                                    f"Failed to recreate checkpoint after file deletion/movement: {recreate_err}",
+                                    extra={"correlation_id": correlation_id},
+                                    exc_info=True,
+                                )
+                        else:
+                            logger.warning(
+                                f"Failed to save checkpoint after document failure: {checkpoint_err}",
+                                extra={"correlation_id": correlation_id},
+                                exc_info=True,
+                            )
                 continue
     
     # Finish batch progress
