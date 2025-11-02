@@ -147,6 +147,127 @@ uv run citeloom query run --project citeloom/clean-arch \
   --top-k 6
 ```
 
+## Common Use Cases
+
+### Use Case 1: Local PDF Import
+
+Import PDF files from your local file system:
+
+```bash
+# 1. Place PDFs in assets/raw directory
+cp ~/Documents/papers/*.pdf assets/raw/
+
+# 2. Ingest all documents
+uv run citeloom ingest run --project research/papers
+
+# 3. Search the imported content
+uv run citeloom query run \
+  --project research/papers \
+  --query "your search query" \
+  --top-k 10
+```
+
+### Use Case 2: Zotero Collection Import
+
+Import all PDF attachments from a Zotero collection:
+
+```bash
+# 1. Browse your Zotero library
+uv run citeloom zotero list-collections
+
+# 2. View items in a specific collection
+uv run citeloom zotero browse-collection --collection "Research Papers"
+
+# 3. Import all PDFs from the collection
+uv run citeloom ingest run \
+  --project research/zotero-papers \
+  --zotero-collection "Research Papers"
+
+# 4. Query imported papers
+uv run citeloom query run \
+  --project research/zotero-papers \
+  --query "machine learning" \
+  --hybrid \
+  --top-k 8
+```
+
+### Use Case 3: Tag-Based Selective Import
+
+Import only papers matching specific tags:
+
+```bash
+# 1. List available tags
+uv run citeloom zotero list-tags
+
+# 2. Import papers with "ML" or "AI" tags, excluding drafts
+uv run citeloom ingest run \
+  --project research/ml-papers \
+  --zotero-collection "Research Papers" \
+  --zotero-tags "ML,AI" \
+  --exclude-tags "Draft"
+
+# 3. Verify import
+uv run citeloom inspect collection --project research/ml-papers
+```
+
+### Use Case 4: Large Batch Import with Resumability
+
+For large collections, use checkpointing to enable resumability:
+
+```bash
+# Start import (creates checkpoint automatically)
+uv run citeloom ingest run \
+  --project research/large-collection \
+  --zotero-collection "Large Collection"
+
+# If interrupted, resume from checkpoint
+uv run citeloom ingest run \
+  --project research/large-collection \
+  --zotero-collection "Large Collection" \
+  --resume
+
+# After completion, cleanup checkpoint files
+uv run citeloom ingest run \
+  --project research/large-collection \
+  --zotero-collection "Large Collection" \
+  --cleanup-checkpoints
+```
+
+### Use Case 5: Two-Phase Import Workflow
+
+Download first, then process separately:
+
+```bash
+# Phase 1: Download attachments only
+uv run citeloom ingest download \
+  --zotero-collection "Research Papers"
+
+# Phase 2: Process downloaded files
+uv run citeloom ingest process-downloads \
+  --project research/papers \
+  --collection-key ABC12345
+
+# Resume processing if interrupted
+uv run citeloom ingest process-downloads \
+  --project research/papers \
+  --collection-key ABC12345 \
+  --resume
+```
+
+### Use Case 6: Explore Recent Additions
+
+Quickly see what's new in your Zotero library:
+
+```bash
+# View recently added items
+uv run citeloom zotero recent-items --limit 20
+
+# Browse a specific collection
+uv run citeloom zotero browse-collection \
+  --collection "Recent Papers" \
+  --subcollections
+```
+
 ## Step 7: Set Up MCP Integration (Optional)
 
 CiteLoom uses FastMCP for Model Context Protocol (MCP) server integration with AI editors like Cursor and Claude Desktop.
@@ -243,76 +364,66 @@ If you see warnings about "in-memory fallback":
 2. Add entries to `references/clean-arch.json` (CSL-JSON format from Zotero)
 3. Include DOI, citekey, or matching title for automatic resolution
 
-### Windows PyTorch DLL Loading Error
-
-**Problem:** `OSError: [WinError 1114] Eine DLL-Initialisierungsroutine ist fehlgeschlagen` when running ingest/query commands
-
-**Root Cause:** PyTorch (required by Docling for PDF conversion) has known DLL loading issues on Windows.
-
-**Solutions:**
-
-1. **Use WSL (Windows Subsystem for Linux)** - ✅ **CONFIRMED TO WORK**:
-   ```bash
-   # Install WSL if not already installed
-   wsl --install
-   
-   # In WSL, install uv and sync dependencies
-   wsl
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   export PATH="$HOME/.local/bin:$PATH"
-   
-   # Navigate to project (Windows paths are in /mnt/c/)
-   cd /mnt/c/Dev/Python-Projects/citeloom
-   
-   # Set venv to Linux filesystem to avoid permission issues
-   export UV_PROJECT_ENVIRONMENT="$HOME/.citeloom-venv"
-   
-   # Sync dependencies
-   uv sync --python python3.12
-   
-   # Run commands
-   uv run citeloom ingest run --project citeloom/clean-arch
-   ```
-   
-   **Note:** The Windows DLL error is completely resolved in WSL. PyTorch and Docling work correctly.
-
-2. **Downgrade PyTorch to 2.8.0** - ✅ **RECOMMENDED FIX**:
-   
-   According to [PyTorch issue #166628](https://github.com/pytorch/pytorch/issues/166628), PyTorch 2.9.0 has a known bug causing DLL initialization failures on Windows. The fix is to use PyTorch 2.8.0 instead.
-   
-   The `pyproject.toml` already pins torch to `<2.9.0`. To apply the fix:
-   
-   ```bash
-   # Remove the virtual environment (if locked by processes, close Python/IDE first)
-   Remove-Item -Recurse -Force .venv
-   
-   # Re-sync dependencies with the torch version constraint
-   uv sync
-   ```
-   
-   This will install PyTorch 2.8.0 which works correctly on Windows.
-
-3. **Fix PyTorch Installation (Alternative)**:
-   - Manually reinstall PyTorch 2.8.0: `uv pip uninstall torch && uv pip install "torch>=2.8.0,<2.9.0"`
-   - Install Visual C++ Redistributables: https://aka.ms/vs/17/release/vc_redist.x64.exe
-   - See [PyTorch Windows installation guide](https://pytorch.org/get-started/locally/)
-
-4. **Use Docker for Full Stack** (if available):
-   - Run CiteLoom in a Linux container where PyTorch works correctly
-
-**Note:** 
-- This is a Windows-specific issue with PyTorch 2.9.0. Linux and macOS users should not experience this problem.
-- ✅ **Solution confirmed**: Downgrading to PyTorch 2.8.0 resolves the DLL error completely. The `pyproject.toml` now pins torch to `<2.9.0` to prevent this issue.
-
 ## Environment Configuration
 
-For detailed environment variable configuration including Zotero setup, see [Environment Configuration Guide](environment-config.md).
+Create a `.env` file in the project root to configure API keys and settings. Here's a complete example:
 
-Key points:
-- Create `.env` file in project root for API keys
-- Environment variables take precedence over `.env` file
-- Zotero can be configured for remote or local access
-- Better BibTeX integration is automatic when available
+```bash
+# ============================================================================
+# CiteLoom Environment Configuration
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# OpenAI Configuration (Optional)
+# ----------------------------------------------------------------------------
+# Used for OpenAI embeddings. Falls back to FastEmbed if not set.
+# OPENAI_API_KEY=your-openai-api-key-here  # Optional: only needed for OpenAI embeddings
+
+# ----------------------------------------------------------------------------
+# Qdrant Configuration
+# ----------------------------------------------------------------------------
+# For local Qdrant (Docker):
+QDRANT_URL=http://localhost:6333
+# QDRANT_API_KEY=  # Not needed for local
+
+# For Qdrant Cloud (uncomment and fill):
+# QDRANT_API_KEY=your-qdrant-cloud-api-key-here
+# QDRANT_URL=your-qdrant-cloud-url-here
+
+# ----------------------------------------------------------------------------
+# Zotero Configuration
+# ----------------------------------------------------------------------------
+# Option 1: Remote Zotero Access (requires API key)
+# ZOTERO_LIBRARY_ID=your-library-id
+# ZOTERO_LIBRARY_TYPE=user  # or 'group'
+# ZOTERO_API_KEY=your-zotero-api-key
+# ZOTERO_LOCAL=false
+
+# Option 2: Local Zotero Access (requires Zotero desktop running)
+ZOTERO_LIBRARY_ID=0
+ZOTERO_LOCAL=true
+```
+
+### Configuration Details
+
+**OpenAI API Key** (Optional):
+- Get from: https://platform.openai.com/api-keys
+- Only needed if using OpenAI embeddings
+- If not set, uses FastEmbed default embeddings
+
+**Qdrant Configuration**:
+- **Local**: Use `http://localhost:6333` (no API key)
+- **Cloud**: Requires API key and cluster URL from https://cloud.qdrant.io/
+
+**Zotero Configuration**:
+- **Remote**: Requires library ID, type, and API key from https://www.zotero.org/settings/keys
+- **Local**: Requires `ZOTERO_LOCAL=true` and Zotero desktop app running
+- Local library ID is typically `0` or `1` for user library
+
+**Important Notes**:
+- The `.env` file is automatically excluded from version control
+- Environment variables take precedence over `.env` file values
+- Never commit API keys to the repository
 
 ## Next Steps
 

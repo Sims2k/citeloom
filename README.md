@@ -104,6 +104,149 @@ uv run citeloom mcp-server
 
 See also: [Naming alternatives](docs/branding/naming-alternatives.md)
 
+## Use Cases & Examples
+
+### Use Case 1: Import from Local PDF Files
+
+**Scenario**: You have a collection of PDF papers in a local directory and want to make them searchable.
+
+```bash
+# 1. Copy PDFs to the default directory
+cp ~/Documents/papers/*.pdf assets/raw/
+
+# 2. Ingest all documents
+uv run citeloom ingest run --project research/papers
+
+# 3. Query the indexed content
+uv run citeloom query run --project research/papers \
+  --query "neural network architecture" \
+  --top-k 10
+```
+
+### Use Case 2: Import from Zotero Collection
+
+**Scenario**: You have a Zotero library with a collection of research papers and want to import all PDF attachments.
+
+```bash
+# 1. Browse your Zotero library to find collections
+uv run citeloom zotero list-collections
+
+# 2. Browse a specific collection to see what's available
+uv run citeloom zotero browse-collection --collection "Machine Learning Papers"
+
+# 3. Import all PDFs from a Zotero collection
+uv run citeloom ingest run \
+  --project research/ml-papers \
+  --zotero-collection "Machine Learning Papers"
+
+# 4. Query the imported papers
+uv run citeloom query run \
+  --project research/ml-papers \
+  --query "transformer architecture" \
+  --hybrid \
+  --top-k 8
+```
+
+### Use Case 3: Selective Import with Tag Filtering
+
+**Scenario**: You only want to import papers with specific tags from a Zotero collection.
+
+```bash
+# 1. List available tags in your Zotero library
+uv run citeloom zotero list-tags
+
+# 2. Import only papers tagged with "ML" or "AI" but exclude drafts
+uv run citeloom ingest run \
+  --project research/published-papers \
+  --zotero-collection "Research Papers" \
+  --zotero-tags "ML,AI" \
+  --exclude-tags "Draft"
+
+# 3. Verify what was imported
+uv run citeloom inspect collection --project research/published-papers
+```
+
+### Use Case 4: Resumable Batch Import with Checkpointing
+
+**Scenario**: You're importing a large collection (100+ documents) and want to be able to resume if interrupted.
+
+```bash
+# 1. Start import (creates checkpoint automatically)
+uv run citeloom ingest run \
+  --project research/large-collection \
+  --zotero-collection "Large Collection"
+
+# 2. If interrupted, resume from checkpoint
+uv run citeloom ingest run \
+  --project research/large-collection \
+  --zotero-collection "Large Collection" \
+  --resume
+
+# 3. After successful completion, cleanup checkpoint files
+uv run citeloom ingest run \
+  --project research/large-collection \
+  --zotero-collection "Large Collection" \
+  --cleanup-checkpoints
+```
+
+### Use Case 5: Two-Phase Import (Download Then Process)
+
+**Scenario**: You want to download all attachments first, then process them separately.
+
+```bash
+# Phase 1: Download all attachments without processing
+uv run citeloom ingest download \
+  --zotero-collection "Research Papers" \
+  --zotero-tags "Published"
+
+# Phase 2: Process the downloaded files
+uv run citeloom ingest process-downloads \
+  --project research/papers \
+  --collection-key ABC12345
+
+# If processing is interrupted, resume
+uv run citeloom ingest process-downloads \
+  --project research/papers \
+  --collection-key ABC12345 \
+  --resume
+```
+
+### Use Case 6: Hybrid Search for Technical Content
+
+**Scenario**: You need to find both exact term matches and semantically similar content.
+
+```bash
+# Search using hybrid search (combines full-text and vector search)
+uv run citeloom query run \
+  --project research/papers \
+  --query "dependency inversion principle SOLID" \
+  --hybrid \
+  --top-k 10
+
+# Compare with vector-only search
+uv run citeloom query run \
+  --project research/papers \
+  --query "dependency inversion principle SOLID" \
+  --top-k 10
+```
+
+### Use Case 7: Project Management and Validation
+
+**Scenario**: You have multiple projects and want to verify their configuration.
+
+```bash
+# List all projects
+uv run citeloom inspect collection --project research/papers
+
+# Validate project configuration
+uv run citeloom validate --project research/papers
+
+# Inspect collection statistics
+uv run citeloom inspect collection \
+  --project research/papers \
+  --sample 5
+```
+
 ### Minimal `citeloom.toml`
 
 ```toml
@@ -190,27 +333,95 @@ CiteLoom supports environment-based configuration for API keys and sensitive set
 
 ### Setup `.env` File
 
-Create a `.env` file in the project root with your API keys:
+Create a `.env` file in the project root with your API keys. Here's a complete example with all available options:
 
 ```bash
-# Optional: OpenAI API key (for OpenAI embeddings, falls back to FastEmbed if not set)
-OPENAI_API_KEY=sk-...
+# ============================================================================
+# CiteLoom Environment Configuration
+# ============================================================================
+# This file contains API keys and configuration for CiteLoom.
+# Never commit this file to version control - it's automatically ignored.
+# ============================================================================
 
-# Optional: Qdrant API key (required for Qdrant Cloud, optional for local)
-QDRANT_API_KEY=your-qdrant-api-key
-QDRANT_URL=http://localhost:6333  # Optional: Override Qdrant URL
+# ----------------------------------------------------------------------------
+# OpenAI Configuration (Optional)
+# ----------------------------------------------------------------------------
+# Used for OpenAI embeddings. If not set, CiteLoom falls back to FastEmbed
+# default embeddings (BAAI/bge-small-en-v1.5).
+# Get your API key from: https://platform.openai.com/api-keys
+# OPENAI_API_KEY=your-openai-api-key-here  # Optional: only needed for OpenAI embeddings
 
-# Zotero Configuration (for citation metadata resolution)
-# Option 1: Remote Zotero access (requires API key)
-ZOTERO_LIBRARY_ID=your-library-id
-ZOTERO_LIBRARY_TYPE=user  # or 'group'
-ZOTERO_API_KEY=your-zotero-api-key
-ZOTERO_LOCAL=false  # or omit (defaults to false)
+# ----------------------------------------------------------------------------
+# Qdrant Configuration
+# ----------------------------------------------------------------------------
+# For local Qdrant (Docker): Leave these commented or use defaults
+# QDRANT_URL=http://localhost:6333
+# QDRANT_API_KEY=  # Not needed for local Qdrant
 
-# Option 2: Local Zotero access (requires Zotero running locally)
-ZOTERO_LIBRARY_ID=1  # Typically '1' for user library
+# For Qdrant Cloud: Uncomment and fill in your credentials
+# Get your API key from: https://cloud.qdrant.io/
+# QDRANT_API_KEY=your-qdrant-cloud-api-key-here
+# QDRANT_URL=your-qdrant-cloud-url-here
+
+# ----------------------------------------------------------------------------
+# Zotero Configuration
+# ----------------------------------------------------------------------------
+# CiteLoom supports two modes of Zotero access:
+# 1. Remote API access (requires API key) - for synced libraries
+# 2. Local API access (requires Zotero desktop running) - for local libraries
+
+# Option 1: Remote Zotero Access (Recommended for Production)
+# Get your credentials from: https://www.zotero.org/settings/keys
+# ZOTERO_LIBRARY_ID=your-library-id
+# ZOTERO_LIBRARY_TYPE=user  # or 'group' for group libraries
+# ZOTERO_API_KEY=your-zotero-api-key
+# ZOTERO_LOCAL=false  # Explicitly set to false for remote access
+
+# Option 2: Local Zotero Access (Recommended for Development)
+# Requires Zotero desktop app running with local API enabled
+# ZOTERO_LIBRARY_ID=1  # Typically '1' for user library, '0' also works
+# ZOTERO_LOCAL=true  # Enable local API access
+
+# Example: Local Zotero access (current configuration)
+ZOTERO_LIBRARY_ID=0
 ZOTERO_LOCAL=true
+
+# ----------------------------------------------------------------------------
+# Configuration File Override (Optional)
+# ----------------------------------------------------------------------------
+# Override the default config file path (default: citeloom.toml)
+# CITELOOM_CONFIG=./citeloom.toml
 ```
+
+**Configuration Notes:**
+
+1. **OpenAI API Key**: Optional. Only needed if you want to use OpenAI embeddings instead of the default FastEmbed models. Leave commented if using default embeddings.
+
+2. **Qdrant Configuration**:
+   - **Local Docker**: Use `http://localhost:6333` (no API key needed)
+   - **Qdrant Cloud**: Requires both `QDRANT_URL` and `QDRANT_API_KEY`
+   - The URL format for Qdrant Cloud is: `https://{cluster-id}.{region}.{cloud-provider}.cloud.qdrant.io:6333`
+
+3. **Zotero Configuration**:
+   - **Remote Access**: Requires `ZOTERO_LIBRARY_ID`, `ZOTERO_LIBRARY_TYPE`, and `ZOTERO_API_KEY`
+   - **Local Access**: Requires `ZOTERO_LIBRARY_ID` (typically `0` or `1`) and `ZOTERO_LOCAL=true`
+   - Local access requires the Zotero desktop app to be running
+   - You cannot use both remote and local access simultaneously - choose one mode
+
+4. **Getting Your Zotero API Key**:
+   - Go to [Zotero Settings → Feeds/API](https://www.zotero.org/settings/keys)
+   - Create a new API key with library access permissions
+   - Copy the API key and your user/library ID
+
+5. **Library ID Discovery**:
+   - **User library**: Your user ID is shown on the [Zotero Settings page](https://www.zotero.org/settings/keys)
+   - **Group library**: Found in the group's URL: `https://www.zotero.org/groups/{library_id}`
+
+**Security Best Practices**:
+- Never commit `.env` files to version control (automatically ignored via `.gitignore`)
+- Use environment-specific `.env` files for different environments (e.g., `.env.local`, `.env.production`)
+- Rotate API keys regularly
+- Use Qdrant Cloud API keys with appropriate permissions (read/write only, not admin)
 
 **Note**: The `.env` file is automatically excluded from version control via `.gitignore`. Never commit API keys to the repository.
 

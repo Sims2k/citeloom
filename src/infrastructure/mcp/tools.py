@@ -20,6 +20,8 @@ from ...infrastructure.adapters.docling_chunker import DoclingHybridChunkerAdapt
 from ...infrastructure.adapters.fastembed_embeddings import FastEmbedAdapter
 from ...infrastructure.adapters.qdrant_index import QdrantIndexAdapter
 from ...infrastructure.adapters.zotero_metadata import ZoteroPyzoteroResolver
+from ...infrastructure.adapters.zotero_importer import ZoteroImporterAdapter
+from ...application.use_cases.batch_import_from_zotero import batch_import_from_zotero
 from ...infrastructure.config.settings import Settings
 from ...infrastructure.logging import get_correlation_id, set_correlation_id
 
@@ -92,6 +94,20 @@ def create_tools(settings: Settings) -> list[Tool]:
                                 "type": "array",
                                 "items": {"type": "string"},
                                 "description": "Explicit OCR language codes (overrides Zotero/default)",
+                            },
+                            "collection_key": {
+                                "type": "string",
+                                "description": "Zotero collection key (required when source='zotero')",
+                            },
+                            "include_tags": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Tags to include (OR logic - any match selects item). Case-insensitive partial matching.",
+                            },
+                            "exclude_tags": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Tags to exclude (ANY-match logic - any exclude tag excludes item). Case-insensitive partial matching.",
                             },
                             "zotero_config": {
                                 "type": "object",
@@ -285,17 +301,93 @@ async def handle_ingest_from_source(arguments: dict[str, Any], settings: Setting
     _validate_project(project_id, settings)
     project_settings = settings.get_project(project_id)
     
-    # Handle source path
-    source_path: str
+    # Handle Zotero collection import
     if source == "zotero":
-        # Zotero ingestion not yet implemented - placeholder
-        raise MCPToolError(
-            code="NOT_IMPLEMENTED",
-            message="Zotero collection ingestion not yet implemented",
-            details={"source": source},
+        # Extract Zotero-specific options
+        collection_key = options.get("collection_key")
+        if not collection_key:
+            raise MCPToolError(
+                code="MISSING_PARAMETER",
+                message="collection_key required for Zotero import",
+                details={"source": source},
+            )
+        
+        # Extract tag filters
+        include_tags = options.get("include_tags")
+        exclude_tags = options.get("exclude_tags")
+        
+        # Get zotero_config from options
+        zotero_config = options.get("zotero_config")
+        
+        # Initialize Zotero importer
+        try:
+            zotero_importer = ZoteroImporterAdapter(zotero_config=zotero_config)
+        except Exception as e:
+            raise MCPToolError(
+                code="ZOTERO_INIT_ERROR",
+                message=f"Failed to initialize Zotero importer: {e}",
+                details={"error": str(e)},
+            )
+        
+        # Initialize adapters for batch import
+        converter = DoclingConverterAdapter()
+        chunker = DoclingHybridChunkerAdapter()
+        resolver = ZoteroPyzoteroResolver(zotero_config=zotero_config)
+        embedder = FastEmbedAdapter(default_model=project_settings.embedding_model)
+        index = QdrantIndexAdapter(
+            url=settings.qdrant.url,
+            create_fulltext_index=settings.qdrant.create_fulltext_index,
         )
-    else:
-        source_path = source
+        
+        # Execute batch import with timeout (15s)
+        async def _batch_import() -> dict[str, Any]:
+            loop = asyncio.get_event_loop()
+            
+            result = await loop.run_in_executor(
+                None,
+                lambda: batch_import_from_zotero(
+                    project_id=project_id,
+                    collection_key=collection_key,
+                    zotero_importer=zotero_importer,
+                    converter=converter,
+                    chunker=chunker,
+                    resolver=resolver,
+                    embedder=embedder,
+                    index=index,
+                    embedding_model=project_settings.embedding_model,
+                    zotero_config=zotero_config,
+                    include_tags=include_tags,
+                    exclude_tags=exclude_tags,
+                    audit_dir=Path(settings.paths.audit_dir),
+                ),
+            )
+            
+            return {
+                "chunks_written": result["chunks_written"],
+                "documents_processed": result["total_documents"],
+                "duration_seconds": result["duration_seconds"],
+                "embed_model": project_settings.embedding_model,
+                "warnings": result["warnings"],
+            }
+        
+        try:
+            result = await asyncio.wait_for(_batch_import(), timeout=15.0)
+            return json.dumps(result, indent=2)
+        except asyncio.TimeoutError:
+            raise MCPToolError(
+                code="TIMEOUT",
+                message="Zotero batch import timed out after 15 seconds",
+                details={"collection_key": collection_key},
+            )
+        except Exception as e:
+            raise MCPToolError(
+                code="INGEST_ERROR",
+                message=f"Zotero batch import failed: {e}",
+                details={"collection_key": collection_key, "error": str(e)},
+            )
+    
+    # Handle source path
+    source_path = source
     
     # Validate source exists
     source_path_obj = Path(source_path)
@@ -345,6 +437,7 @@ async def handle_ingest_from_source(arguments: dict[str, Any], settings: Setting
         
         total_chunks = 0
         total_documents = 0
+        total_duration = 0.0
         warnings: list[str] = []
         
         try:
@@ -374,6 +467,7 @@ async def handle_ingest_from_source(arguments: dict[str, Any], settings: Setting
                 
                 total_chunks += result.chunks_written
                 total_documents += result.documents_processed
+                total_duration += result.duration_seconds
                 warnings.extend(result.warnings)
             
             # Get sparse model ID from collection if hybrid enabled
@@ -398,7 +492,7 @@ async def handle_ingest_from_source(arguments: dict[str, Any], settings: Setting
                 "project": project_id,
                 "dense_model": project_settings.embedding_model,
                 "sparse_model": sparse_model_id or "Qdrant/bm25",  # Default if not available
-                "duration_seconds": 0.0,  # TODO: Track actual duration
+                "duration_seconds": total_duration,
                 "warnings": warnings,
             }
         except EmbeddingModelMismatch as e:
