@@ -93,17 +93,17 @@
 
 ### Implementation for User Story 2
 
-- [ ] T044 [US2] Create RichProgressReporterAdapter class in src/infrastructure/adapters/rich_progress_reporter.py implementing ProgressReporterPort
-- [ ] T045 [US2] Implement RichProgressReporterAdapter.start_batch() using Rich Progress with SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn in src/infrastructure/adapters/rich_progress_reporter.py
-- [ ] T046 [US2] Implement RichProgressReporterAdapter.start_document() to create per-document progress task showing document index and name in src/infrastructure/adapters/rich_progress_reporter.py
-- [ ] T047 [US2] Implement DocumentProgressContext.update_stage() to update progress bar with current stage (converting, chunking, embedding, storing) and description in src/infrastructure/adapters/rich_progress_reporter.py
-- [ ] T048 [US2] Implement DocumentProgressContext.fail() to mark document as failed with error message in progress bar in src/infrastructure/adapters/rich_progress_reporter.py
-- [ ] T049 [US2] Detect non-interactive mode (non-TTY) and fallback to structured logging instead of Rich progress bars in RichProgressReporterAdapter in src/infrastructure/adapters/rich_progress_reporter.py
-- [ ] T050 [US2] Implement time estimation logic based on elapsed time and average stage duration in RichProgressReporterAdapter in src/infrastructure/adapters/rich_progress_reporter.py
-- [ ] T051 [US2] Enhance IngestDocument use case to call progress_reporter.update_stage() at each stage (converting, chunking, embedding, storing) in src/application/use_cases/ingest_document.py
-- [ ] T052 [US2] Display final summary with total documents processed, chunks created, duration, warnings, and errors in RichProgressReporterAdapter in src/infrastructure/adapters/rich_progress_reporter.py
-- [ ] T053 [US2] Integrate RichProgressReporterAdapter with BatchImportFromZotero use case for batch-level and document-level progress in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T054 [US2] Pass progress_reporter to IngestDocument use case from BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T044 [US2] Create RichProgressReporterAdapter class in src/infrastructure/adapters/rich_progress_reporter.py implementing ProgressReporterPort
+- [x] T045 [US2] Implement RichProgressReporterAdapter.start_batch() using Rich Progress with SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn in src/infrastructure/adapters/rich_progress_reporter.py
+- [x] T046 [US2] Implement RichProgressReporterAdapter.start_document() to create per-document progress task showing document index and name in src/infrastructure/adapters/rich_progress_reporter.py
+- [x] T047 [US2] Implement DocumentProgressContext.update_stage() to update progress bar with current stage (converting, chunking, embedding, storing) and description in src/infrastructure/adapters/rich_progress_reporter.py
+- [x] T048 [US2] Implement DocumentProgressContext.fail() to mark document as failed with error message in progress bar in src/infrastructure/adapters/rich_progress_reporter.py
+- [x] T049 [US2] Detect non-interactive mode (non-TTY) and fallback to structured logging instead of Rich progress bars in RichProgressReporterAdapter in src/infrastructure/adapters/rich_progress_reporter.py
+- [x] T050 [US2] Implement time estimation logic based on elapsed time and average stage duration in RichProgressReporterAdapter in src/infrastructure/adapters/rich_progress_reporter.py
+- [x] T051 [US2] Enhance IngestDocument use case to call progress_reporter.update_stage() at each stage (converting, chunking, embedding, storing) in src/application/use_cases/ingest_document.py
+- [x] T052 [US2] Display final summary with total documents processed, chunks created, duration, warnings, and errors in RichProgressReporterAdapter in src/infrastructure/adapters/rich_progress_reporter.py
+- [x] T053 [US2] Integrate RichProgressReporterAdapter with BatchImportFromZotero use case for batch-level and document-level progress in src/application/use_cases/batch_import_from_zotero.py
+- [x] T054 [US2] Pass progress_reporter to IngestDocument use case from BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 

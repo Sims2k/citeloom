@@ -397,6 +397,7 @@ def batch_import_from_zotero(
     
     total_chunks = 0
     total_documents_processed = 0
+    document_index = 0
     
     # Process each successful download from manifest
     for item in download_manifest.get_successful_downloads():
@@ -430,6 +431,8 @@ def batch_import_from_zotero(
             # provide Zotero metadata via zotero_config or enhance the resolver to accept
             # pre-extracted metadata. For now, resolver will do its best to match.
             
+            document_index += 1
+            
             try:
                 # Process document through ingest pipeline
                 result: IngestResult = ingest_document(
@@ -442,6 +445,8 @@ def batch_import_from_zotero(
                     audit_dir=audit_dir,
                     correlation_id=correlation_id,
                     progress_reporter=progress_reporter,
+                    document_index=document_index,
+                    total_documents=total_attachments,
                 )
                 
                 total_chunks += result.chunks_written
@@ -470,6 +475,20 @@ def batch_import_from_zotero(
         batch_progress.finish()
     
     duration_seconds = (datetime.now() - start_time).total_seconds()
+    
+    # Display final summary using progress reporter if available
+    if progress_reporter and hasattr(progress_reporter, "display_summary"):
+        progress_reporter.display_summary(
+            total_documents=total_documents_processed,
+            chunks_created=total_chunks,
+            duration_seconds=duration_seconds,
+            warnings=warnings,
+            errors=errors,
+        )
+    
+    # Clean up progress reporter if it has cleanup method
+    if progress_reporter and hasattr(progress_reporter, "cleanup"):
+        progress_reporter.cleanup()
     
     logger.info(
         f"Batch import completed: {total_documents_processed} documents, {total_chunks} chunks",

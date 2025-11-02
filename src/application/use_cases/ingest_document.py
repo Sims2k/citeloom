@@ -29,6 +29,8 @@ def ingest_document(
     audit_dir: Path | None = None,
     correlation_id: str | None = None,
     progress_reporter: ProgressReporterPort | None = None,
+    document_index: int | None = None,
+    total_documents: int | None = None,
 ) -> IngestResult:
     """
     Orchestrate document ingestion: convert → chunk → metadata → embed → upsert → audit.
@@ -43,6 +45,8 @@ def ingest_document(
         audit_dir: Optional directory for audit JSONL logs
         correlation_id: Optional correlation ID (generated if not provided)
         progress_reporter: Optional progress reporter for stage-level progress updates
+        document_index: Optional document index for progress display (1-based)
+        total_documents: Optional total documents count for progress display
     
     Returns:
         IngestResult with chunks_written, documents_processed, duration_seconds, embed_model, warnings
@@ -63,8 +67,8 @@ def ingest_document(
     if progress_reporter:
         document_name = source_path_obj.name if source_path_obj.is_file() else request.source_path
         doc_progress = progress_reporter.start_document(
-            document_index=1,
-            total_documents=1,
+            document_index=document_index or 1,
+            total_documents=total_documents or 1,
             document_name=document_name,
         )
     
