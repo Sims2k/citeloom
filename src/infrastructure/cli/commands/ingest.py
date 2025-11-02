@@ -11,12 +11,16 @@ from src.application.ports.chunker import ChunkerPort
 from src.application.ports.metadata_resolver import MetadataResolverPort
 from src.application.ports.embeddings import EmbeddingPort
 from src.application.ports.vector_index import VectorIndexPort
+from src.application.ports.checkpoint_manager import CheckpointManagerPort
+from src.application.ports.progress_reporter import ProgressReporterPort
+from src.infrastructure.adapters.checkpoint_manager import CheckpointManagerAdapter
 from src.infrastructure.adapters.docling_converter import DoclingConverterAdapter
 from src.infrastructure.adapters.docling_chunker import DoclingHybridChunkerAdapter
-from src.infrastructure.adapters.zotero_metadata import ZoteroPyzoteroResolver
-from src.infrastructure.adapters.zotero_importer import ZoteroImporterAdapter
 from src.infrastructure.adapters.fastembed_embeddings import FastEmbedAdapter
 from src.infrastructure.adapters.qdrant_index import QdrantIndexAdapter
+from src.infrastructure.adapters.rich_progress_reporter import RichProgressReporterAdapter
+from src.infrastructure.adapters.zotero_importer import ZoteroImporterAdapter
+from src.infrastructure.adapters.zotero_metadata import ZoteroPyzoteroResolver
 from src.infrastructure.config.settings import Settings
 from src.infrastructure.logging import configure_logging, set_correlation_id
 
@@ -32,6 +36,8 @@ def run(
     zotero_config: str | None = typer.Option(None, help="Zotero configuration (JSON string or env vars will be used)"),
     embedding_model: str | None = typer.Option(None, help="Embedding model identifier"),
     config_path: str = typer.Option("citeloom.toml", help="Path to citeloom.toml configuration file"),
+    resume: bool = typer.Option(False, help="Resume from existing checkpoint (requires --zotero-collection)"),
+    fresh: bool = typer.Option(False, help="Start fresh import even if checkpoint exists (requires --zotero-collection)"),
 ):
     """
     Ingest documents into a project-scoped collection.
@@ -46,9 +52,18 @@ def run(
     # Configure logging
     configure_logging(logging.INFO)
     
-    # Generate correlation ID
+    # Generate correlation ID (will be used for checkpointing if --zotero-collection is used)
     correlation_id = str(uuid.uuid4())
     set_correlation_id(correlation_id)
+    
+    # Validate resume/fresh flags (only valid for Zotero imports)
+    if (resume or fresh) and not zotero_collection:
+        typer.echo("Error: --resume and --fresh flags are only valid with --zotero-collection", err=True)
+        raise typer.Exit(1)
+    
+    if resume and fresh:
+        typer.echo("Error: Cannot use both --resume and --fresh flags together", err=True)
+        raise typer.Exit(1)
     
     # Load settings
     try:
@@ -121,8 +136,33 @@ def run(
         embedder: EmbeddingPort = FastEmbedAdapter(default_model=model_id)
         index: VectorIndexPort = QdrantIndexAdapter(url=settings.qdrant.url)
         
+        # Initialize checkpoint manager and progress reporter for batch import
+        checkpoint_manager: CheckpointManagerPort | None = None
+        progress_reporter: ProgressReporterPort | None = None
+        checkpoints_dir = Path(settings.paths.checkpoints_dir if hasattr(settings.paths, "checkpoints_dir") else "var/checkpoints")
+        
+        # Checkpoint manager for resumable processing
+        checkpoint_manager = CheckpointManagerAdapter(checkpoints_dir=checkpoints_dir)
+        
+        # Check if checkpoint exists when not using --resume or --fresh
+        checkpoint_path = checkpoint_manager.get_checkpoint_path(correlation_id)
+        if not resume and not fresh and checkpoint_manager.checkpoint_exists(checkpoint_path):
+            typer.echo(
+                f"Warning: Checkpoint file exists: {checkpoint_path}\n"
+                f"Use --resume to continue from checkpoint or --fresh to start a new import.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        
+        # Progress reporter for visual progress indication
+        progress_reporter = RichProgressReporterAdapter()
+        
         # Run batch import
         typer.echo(f"Importing from Zotero collection: {collection_name or collection_key}")
+        if resume:
+            typer.echo(f"Resuming from checkpoint: {checkpoint_path}")
+        elif fresh:
+            typer.echo(f"Starting fresh import (checkpoint will be ignored)")
         
         try:
             result = batch_import_from_zotero(
@@ -136,8 +176,13 @@ def run(
                 embedder=embedder,
                 index=index,
                 embedding_model=model_id,
+                progress_reporter=progress_reporter,
+                checkpoint_manager=checkpoint_manager,
+                resume=resume,
+                correlation_id=correlation_id,
                 zotero_config=zotero_config_dict,
                 audit_dir=audit_dir,
+                checkpoints_dir=checkpoints_dir,
             )
             
             typer.echo(f"\n{'='*60}")
@@ -145,6 +190,8 @@ def run(
             typer.echo(f"Collection: {result['collection_name']}")
             typer.echo(f"Imported {result['chunks_written']} chunks from {result['total_documents']} document(s)")
             typer.echo(f"Duration: {result['duration_seconds']:.2f} seconds")
+            if result.get('checkpoint_path'):
+                typer.echo(f"Checkpoint: {result['checkpoint_path']}")
             
             if result['warnings']:
                 typer.echo(f"\nWarnings ({len(result['warnings'])}):")

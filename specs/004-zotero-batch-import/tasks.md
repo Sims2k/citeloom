@@ -117,20 +117,20 @@
 
 ### Implementation for User Story 3
 
-- [ ] T055 [US3] Create CheckpointManagerAdapter class in src/infrastructure/adapters/checkpoint_manager.py implementing CheckpointManagerPort
-- [ ] T056 [US3] Implement CheckpointManagerAdapter.save_checkpoint() with atomic write (write to temp file, then atomic rename) in src/infrastructure/adapters/checkpoint_manager.py
-- [ ] T057 [US3] Implement CheckpointManagerAdapter.load_checkpoint() with JSON deserialization and error handling in src/infrastructure/adapters/checkpoint_manager.py
-- [ ] T058 [US3] Implement CheckpointManagerAdapter.validate_checkpoint() to validate schema, timestamp consistency, and document checkpoint validity in src/infrastructure/adapters/checkpoint_manager.py
-- [ ] T059 [US3] Implement CheckpointManagerAdapter.checkpoint_exists() to check if checkpoint file exists at path in src/infrastructure/adapters/checkpoint_manager.py
-- [ ] T060 [US3] Generate checkpoint file path using correlation ID format var/checkpoints/{correlation_id}.json in CheckpointManagerAdapter in src/infrastructure/adapters/checkpoint_manager.py
-- [ ] T061 [US3] Update checkpoint after each document completes processing stage in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T062 [US3] Save checkpoint after each successful batch upsert (100-500 points) to enable fine-grained resume in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T063 [US3] Implement resume logic to load checkpoint, skip completed documents, and continue from first incomplete document in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T064 [US3] Validate checkpoint file integrity before resuming and warn if invalid/corrupted in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T065 [US3] Add --resume flag to ingest CLI command in src/infrastructure/cli/commands/ingest.py to enable checkpoint loading
-- [ ] T066 [US3] Add --fresh flag to ingest CLI command in src/infrastructure/cli/commands/ingest.py to start new import instead of resuming checkpoint (when checkpoint exists, require explicit --fresh flag to start fresh, otherwise prompt user or require --resume)
-- [ ] T068 [US3] Detect checkpoint file disappearance during processing and handle gracefully (recreate checkpoint if possible, or fail with clear error) in CheckpointManagerAdapter in src/infrastructure/adapters/checkpoint_manager.py
-- [ ] T067 [US3] Handle duplicate documents by skipping silently using deterministic chunk IDs (existing idempotent upsert behavior) in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T055 [US3] Create CheckpointManagerAdapter class in src/infrastructure/adapters/checkpoint_manager.py implementing CheckpointManagerPort
+- [x] T056 [US3] Implement CheckpointManagerAdapter.save_checkpoint() with atomic write (write to temp file, then atomic rename) in src/infrastructure/adapters/checkpoint_manager.py
+- [x] T057 [US3] Implement CheckpointManagerAdapter.load_checkpoint() with JSON deserialization and error handling in src/infrastructure/adapters/checkpoint_manager.py
+- [x] T058 [US3] Implement CheckpointManagerAdapter.validate_checkpoint() to validate schema, timestamp consistency, and document checkpoint validity in src/infrastructure/adapters/checkpoint_manager.py
+- [x] T059 [US3] Implement CheckpointManagerAdapter.checkpoint_exists() to check if checkpoint file exists at path in src/infrastructure/adapters/checkpoint_manager.py
+- [x] T060 [US3] Generate checkpoint file path using correlation ID format var/checkpoints/{correlation_id}.json in CheckpointManagerAdapter in src/infrastructure/adapters/checkpoint_manager.py
+- [x] T061 [US3] Update checkpoint after each document completes processing stage in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T062 [US3] Save checkpoint after each successful batch upsert (100-500 points) to enable fine-grained resume in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T063 [US3] Implement resume logic to load checkpoint, skip completed documents, and continue from first incomplete document in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T064 [US3] Validate checkpoint file integrity before resuming and warn if invalid/corrupted in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [x] T065 [US3] Add --resume flag to ingest CLI command in src/infrastructure/cli/commands/ingest.py to enable checkpoint loading
+- [x] T066 [US3] Add --fresh flag to ingest CLI command in src/infrastructure/cli/commands/ingest.py to start new import instead of resuming checkpoint (when checkpoint exists, require explicit --fresh flag to start fresh, otherwise prompt user or require --resume)
+- [x] T068 [US3] Detect checkpoint file disappearance during processing and handle gracefully (recreate checkpoint if possible, or fail with clear error) in CheckpointManagerAdapter in src/infrastructure/adapters/checkpoint_manager.py
+- [x] T067 [US3] Handle duplicate documents by skipping silently using deterministic chunk IDs (existing idempotent upsert behavior) in BatchImportFromZotero use case in src/application/use_cases/batch_import_from_zotero.py
 
 **Checkpoint**: At this point, User Stories 1, 2, AND 3 should all work independently
 

@@ -9,12 +9,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from ...domain.models.checkpoint import DocumentCheckpoint, IngestionCheckpoint
 from ...domain.models.download_manifest import (
     DownloadManifest,
     DownloadManifestAttachment,
     DownloadManifestItem,
 )
 from ..dto.ingest import IngestRequest, IngestResult
+from ..ports.checkpoint_manager import CheckpointManagerPort
 from ..ports.converter import TextConverterPort
 from ..ports.chunker import ChunkerPort
 from ..ports.embeddings import EmbeddingPort
@@ -39,12 +41,16 @@ def batch_import_from_zotero(
     index: VectorIndexPort | None = None,
     embedding_model: str = "BAAI/bge-small-en-v1.5",
     progress_reporter: ProgressReporterPort | None = None,
+    checkpoint_manager: CheckpointManagerPort | None = None,
+    resume: bool = False,
+    correlation_id: str | None = None,
     zotero_config: dict[str, Any] | None = None,
     include_tags: list[str] | None = None,
     exclude_tags: list[str] | None = None,
     include_subcollections: bool = False,
     downloads_dir: Path | None = None,
     audit_dir: Path | None = None,
+    checkpoints_dir: Path | None = None,
 ) -> dict[str, Any]:
     """
     Orchestrate batch import of documents from Zotero collection.
@@ -65,12 +71,16 @@ def batch_import_from_zotero(
         index: VectorIndexPort for vector storage
         embedding_model: Embedding model ID (default: "BAAI/bge-small-en-v1.5")
         progress_reporter: Optional progress reporter for batch-level and document-level progress
+        checkpoint_manager: Optional checkpoint manager for resumable processing
+        resume: Whether to resume from existing checkpoint (loads checkpoint if exists)
+        correlation_id: Optional correlation ID (generated if not provided, required for resume)
         zotero_config: Optional Zotero configuration dict
         include_tags: Optional list of tags to include (OR logic - any match selects item)
         exclude_tags: Optional list of tags to exclude (ANY-match logic - any exclude tag excludes item)
         include_subcollections: Whether to recursively include items from subcollections
         downloads_dir: Directory for downloaded attachments (default: var/zotero_downloads)
         audit_dir: Optional directory for audit JSONL logs
+        checkpoints_dir: Directory for checkpoint files (default: var/checkpoints)
     
     Returns:
         Dict with:
@@ -83,6 +93,7 @@ def batch_import_from_zotero(
             - chunks_written: Total chunks written to vector index
             - duration_seconds: Total duration
             - manifest_path: Path to download manifest JSON file
+            - checkpoint_path: Path to checkpoint file (if checkpointing enabled)
             - warnings: List of warnings encountered
             - errors: List of errors encountered
     
@@ -92,7 +103,8 @@ def batch_import_from_zotero(
     start_time = datetime.now()
     
     # Generate correlation ID at start for checkpoint file naming (FR-029)
-    correlation_id = str(uuid.uuid4())
+    if correlation_id is None:
+        correlation_id = str(uuid.uuid4())
     logger.info(
         f"Starting batch import from Zotero collection",
         extra={
@@ -147,6 +159,76 @@ def batch_import_from_zotero(
     
     warnings: list[str] = []
     errors: list[str] = []
+    
+    # Initialize checkpoint manager and load checkpoint if resuming
+    checkpoint: IngestionCheckpoint | None = None
+    checkpoint_path: Path | None = None
+    
+    if checkpoint_manager:
+        checkpoint_path = checkpoint_manager.get_checkpoint_path(correlation_id)
+        
+        if resume:
+            # Try to load existing checkpoint
+            try:
+                checkpoint = checkpoint_manager.load_checkpoint(correlation_id=correlation_id)
+                
+                if checkpoint:
+                    # Validate checkpoint before resuming
+                    if not checkpoint_manager.validate_checkpoint(checkpoint):
+                        warning_msg = "Checkpoint file is invalid or corrupted. Starting fresh import."
+                        warnings.append(warning_msg)
+                        logger.warning(
+                            warning_msg,
+                            extra={"correlation_id": correlation_id, "checkpoint_path": str(checkpoint_path)},
+                        )
+                        checkpoint = None
+                    else:
+                        # Verify checkpoint matches current import context
+                        if checkpoint.project_id != project_id:
+                            warning_msg = (
+                                f"Checkpoint project_id mismatch: expected '{project_id}', "
+                                f"got '{checkpoint.project_id}'. Starting fresh import."
+                            )
+                            warnings.append(warning_msg)
+                            logger.warning(warning_msg, extra={"correlation_id": correlation_id})
+                            checkpoint = None
+                        elif checkpoint.collection_key != collection_key:
+                            warning_msg = (
+                                f"Checkpoint collection_key mismatch: expected '{collection_key}', "
+                                f"got '{checkpoint.collection_key}'. Starting fresh import."
+                            )
+                            warnings.append(warning_msg)
+                            logger.warning(warning_msg, extra={"correlation_id": correlation_id})
+                            checkpoint = None
+                        else:
+                            logger.info(
+                                f"Resuming from checkpoint: {len(checkpoint.get_completed_documents())} "
+                                f"documents completed, {len(checkpoint.get_incomplete_documents())} remaining",
+                                extra={
+                                    "correlation_id": correlation_id,
+                                    "completed": len(checkpoint.get_completed_documents()),
+                                    "incomplete": len(checkpoint.get_incomplete_documents()),
+                                },
+                            )
+                else:
+                    logger.info(
+                        "No checkpoint found for resume, starting fresh import",
+                        extra={"correlation_id": correlation_id},
+                    )
+            except Exception as e:
+                warning_msg = f"Failed to load checkpoint: {e}. Starting fresh import."
+                warnings.append(warning_msg)
+                logger.warning(warning_msg, extra={"correlation_id": correlation_id}, exc_info=True)
+                checkpoint = None
+        
+        # Create new checkpoint if not resuming or checkpoint invalid
+        if checkpoint is None:
+            checkpoint = IngestionCheckpoint(
+                correlation_id=correlation_id,
+                project_id=project_id,
+                collection_key=collection_key,
+                start_time=start_time,
+            )
     
     # Phase 1: Download all attachments
     logger.info(
@@ -399,6 +481,16 @@ def batch_import_from_zotero(
     total_documents_processed = 0
     document_index = 0
     
+    # Track completed document paths from checkpoint for skipping
+    completed_paths: set[str] = set()
+    if checkpoint:
+        for doc in checkpoint.get_completed_documents():
+            completed_paths.add(doc.path)
+    
+    # Track chunks written for batch checkpoint saving (100-500 points per batch)
+    chunks_since_last_checkpoint = 0
+    CHECKPOINT_BATCH_SIZE = 300  # Save checkpoint every 300 chunks (between 100-500)
+    
     # Process each successful download from manifest
     for item in download_manifest.get_successful_downloads():
         item_key = item.item_key
@@ -410,6 +502,7 @@ def batch_import_from_zotero(
                 continue
             
             file_path = attachment.local_path
+            file_path_str = str(file_path.resolve())  # Use absolute path for checkpoint matching
             
             # Check if file exists
             if not file_path.exists():
@@ -417,6 +510,37 @@ def batch_import_from_zotero(
                 warnings.append(warning_msg)
                 logger.warning(warning_msg, extra={"correlation_id": correlation_id, "file_path": str(file_path)})
                 continue
+            
+            # Skip if already completed (resume logic)
+            if file_path_str in completed_paths:
+                logger.debug(
+                    f"Skipping completed document: {file_path.name}",
+                    extra={"correlation_id": correlation_id, "file_path": str(file_path)},
+                )
+                # Still count it in total_documents_processed for progress tracking
+                if checkpoint:
+                    # Find document checkpoint to get chunk count
+                    for doc in checkpoint.documents:
+                        if doc.path == file_path_str and doc.status == "completed":
+                            total_chunks += doc.chunks_count
+                            total_documents_processed += 1
+                            if batch_progress:
+                                batch_progress.update(total_documents_processed)
+                            break
+                document_index += 1
+                continue
+            
+            # Create document checkpoint for tracking
+            doc_checkpoint = DocumentCheckpoint(
+                path=file_path_str,
+                status="pending",
+                zotero_item_key=item_key,
+                zotero_attachment_key=attachment.attachment_key,
+            )
+            
+            # Update checkpoint with pending document
+            if checkpoint:
+                checkpoint.add_document_checkpoint(doc_checkpoint)
             
             # Create ingest request
             ingest_request = IngestRequest(
@@ -434,6 +558,18 @@ def batch_import_from_zotero(
             document_index += 1
             
             try:
+                # Update checkpoint: marking as converting
+                if checkpoint:
+                    doc_checkpoint.mark_stage("converting")
+                    checkpoint.add_document_checkpoint(doc_checkpoint)
+                    # Save checkpoint after stage update (handles file disappearance)
+                    try:
+                        checkpoint_manager.save_checkpoint(checkpoint, checkpoint_path)
+                    except Exception as e:
+                        warning_msg = f"Failed to save checkpoint after stage update: {e}"
+                        warnings.append(warning_msg)
+                        logger.warning(warning_msg, extra={"correlation_id": correlation_id}, exc_info=True)
+                
                 # Process document through ingest pipeline
                 result: IngestResult = ingest_document(
                     request=ingest_request,
@@ -450,7 +586,16 @@ def batch_import_from_zotero(
                 )
                 
                 total_chunks += result.chunks_written
+                chunks_since_last_checkpoint += result.chunks_written
                 total_documents_processed += result.documents_processed
+                
+                # Update checkpoint: mark as completed
+                if checkpoint:
+                    doc_checkpoint.mark_completed(
+                        chunks_count=result.chunks_written,
+                        doc_id=result.doc_id if hasattr(result, "doc_id") else f"doc_{correlation_id}_{document_index}",
+                    )
+                    checkpoint.add_document_checkpoint(doc_checkpoint)
                 
                 if batch_progress:
                     batch_progress.update(total_documents_processed)
@@ -464,10 +609,58 @@ def batch_import_from_zotero(
                     },
                 )
                 
+                # Save checkpoint after each document completes (enables fine-grained resume)
+                if checkpoint and checkpoint_manager:
+                    try:
+                        checkpoint_manager.save_checkpoint(checkpoint, checkpoint_path)
+                    except Exception as e:
+                        warning_msg = f"Failed to save checkpoint after document: {e}"
+                        warnings.append(warning_msg)
+                        logger.warning(warning_msg, extra={"correlation_id": correlation_id}, exc_info=True)
+                        # Try to recreate checkpoint if file disappeared
+                        try:
+                            # Check if file still exists
+                            if not checkpoint_path.exists():
+                                logger.warning(
+                                    "Checkpoint file disappeared, recreating",
+                                    extra={"correlation_id": correlation_id, "checkpoint_path": str(checkpoint_path)},
+                                )
+                                checkpoint_manager.save_checkpoint(checkpoint, checkpoint_path)
+                        except Exception:
+                            pass  # Ignore errors on recreate attempt
+                
+                # Save checkpoint after batch upsert (every 100-500 points)
+                if checkpoint and checkpoint_manager and chunks_since_last_checkpoint >= CHECKPOINT_BATCH_SIZE:
+                    try:
+                        checkpoint_manager.save_checkpoint(checkpoint, checkpoint_path)
+                        chunks_since_last_checkpoint = 0
+                        logger.debug(
+                            f"Checkpoint saved after batch upsert ({CHECKPOINT_BATCH_SIZE} chunks)",
+                            extra={"correlation_id": correlation_id},
+                        )
+                    except Exception as e:
+                        warning_msg = f"Failed to save checkpoint after batch upsert: {e}"
+                        warnings.append(warning_msg)
+                        logger.warning(warning_msg, extra={"correlation_id": correlation_id}, exc_info=True)
+                
             except Exception as e:
                 error_msg = f"Failed to process document {file_path}: {e}"
                 errors.append(error_msg)
                 logger.error(error_msg, extra={"correlation_id": correlation_id, "file_path": str(file_path)}, exc_info=True)
+                
+                # Update checkpoint: mark as failed
+                if checkpoint:
+                    doc_checkpoint.mark_failed(error=str(e))
+                    checkpoint.add_document_checkpoint(doc_checkpoint)
+                    # Save checkpoint even on failure
+                    try:
+                        checkpoint_manager.save_checkpoint(checkpoint, checkpoint_path)
+                    except Exception as checkpoint_err:
+                        logger.warning(
+                            f"Failed to save checkpoint after document failure: {checkpoint_err}",
+                            extra={"correlation_id": correlation_id},
+                            exc_info=True,
+                        )
                 continue
     
     # Finish batch progress
@@ -510,6 +703,7 @@ def batch_import_from_zotero(
         "chunks_written": total_chunks,
         "duration_seconds": duration_seconds,
         "manifest_path": str(manifest_path),
+        "checkpoint_path": str(checkpoint_path) if checkpoint_path else None,
         "warnings": warnings,
         "errors": errors,
     }
