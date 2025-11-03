@@ -25,6 +25,8 @@ from src.infrastructure.adapters.qdrant_index import QdrantIndexAdapter
 from src.infrastructure.adapters.rich_progress_reporter import RichProgressReporterAdapter
 from src.infrastructure.adapters.zotero_importer import ZoteroImporterAdapter
 from src.infrastructure.adapters.zotero_metadata import ZoteroPyzoteroResolver
+from src.infrastructure.adapters.zotero_annotation_resolver import ZoteroAnnotationResolverAdapter
+from src.application.ports.annotation_resolver import AnnotationResolverPort
 from src.infrastructure.config.settings import Settings
 from src.infrastructure.logging import configure_logging, set_correlation_id
 
@@ -47,6 +49,7 @@ def run(
     cleanup_checkpoints: bool = typer.Option(False, help="Delete checkpoint files after successful import (default: retain checkpoints)"),
     keep_checkpoints: bool = typer.Option(False, help="Explicitly keep checkpoint files (default: retain checkpoints). Mutually exclusive with --cleanup-checkpoints."),
     prefer_zotero_fulltext: bool = typer.Option(True, help="Prefer Zotero fulltext when available (default: True). Set to False to always use Docling conversion."),
+    include_annotations: bool = typer.Option(False, help="Extract and index PDF annotations from Zotero (default: False). Only valid with --zotero-collection."),
 ):
     """
     Ingest documents into a project-scoped collection.
@@ -81,6 +84,11 @@ def run(
     # Validate tag filter flags (only valid for Zotero imports)
     if (zotero_tags or exclude_tags) and not zotero_collection:
         typer.echo("Error: --zotero-tags and --exclude-tags are only valid with --zotero-collection", err=True)
+        raise typer.Exit(1)
+    
+    # Validate include_annotations flag (only valid for Zotero imports)
+    if include_annotations and not zotero_collection:
+        typer.echo("Error: --include-annotations is only valid with --zotero-collection", err=True)
         raise typer.Exit(1)
     
     # Parse tag filters (comma-separated lists)
@@ -190,6 +198,12 @@ def run(
         embedder: EmbeddingPort = FastEmbedAdapter(default_model=model_id)
         index: VectorIndexPort = QdrantIndexAdapter(url=settings.qdrant.url)
         
+        # Initialize annotation resolver if annotations are enabled
+        annotation_resolver: AnnotationResolverPort | None = None
+        include_annotations_value = include_annotations or settings.zotero.include_annotations
+        if include_annotations_value:
+            annotation_resolver = ZoteroAnnotationResolverAdapter(embedder=embedder)
+        
         # Initialize checkpoint manager and progress reporter for batch import
         checkpoint_manager: CheckpointManagerPort | None = None
         progress_reporter: ProgressReporterPort | None = None
@@ -250,6 +264,8 @@ def run(
                 audit_dir=audit_dir,
                 checkpoints_dir=checkpoints_dir,
                 prefer_zotero_fulltext=prefer_zotero_fulltext_value,
+                include_annotations=include_annotations_value,
+                annotation_resolver=annotation_resolver,
             )
             
             # Cleanup logic: delete checkpoint and manifest if --cleanup-checkpoints is set

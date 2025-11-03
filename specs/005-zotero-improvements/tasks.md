@@ -128,19 +128,19 @@
 
 ### Implementation for User Story 3
 
-- [ ] T056 [US3] Create Annotation dataclass with page, quote, comment, color, tags fields in src/infrastructure/adapters/zotero_annotation_resolver.py
-- [ ] T057 [US3] Create AnnotationResolverPort protocol in src/application/ports/annotation_resolver.py
-- [ ] T058 [US3] Create ZoteroAnnotationResolverAdapter class in src/infrastructure/adapters/zotero_annotation_resolver.py implementing AnnotationResolverPort
-- [ ] T059 [US3] Implement ZoteroAnnotationResolverAdapter.fetch_annotations() using Web API children() method with itemType=annotation in src/infrastructure/adapters/zotero_annotation_resolver.py
-- [ ] T060 [US3] Implement annotation normalization (pageIndex → page, extract quote/comment/color/tags) in src/infrastructure/adapters/zotero_annotation_resolver.py
-- [ ] T061 [US3] Implement retry logic with exponential backoff (3 retries, base 1s, max 30s, jitter) for annotation fetching in src/infrastructure/adapters/zotero_annotation_resolver.py
-- [ ] T062 [US3] Implement graceful skipping when annotations unavailable (log warning, continue import) in src/infrastructure/adapters/zotero_annotation_resolver.py
-- [ ] T063 [US3] Implement ZoteroAnnotationResolverAdapter.index_annotations() creating annotation payloads with type:annotation tag in src/infrastructure/adapters/zotero_annotation_resolver.py
-- [ ] T064 [US3] Create annotation payload structure with zotero.item_key, zotero.attachment_key, zotero.annotation.* fields in src/infrastructure/adapters/zotero_annotation_resolver.py
-- [ ] T065 [US3] Integrate AnnotationResolver into batch_import_from_zotero use case when include_annotations=true in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T066 [US3] Call AnnotationResolver.index_annotations() after document processing for each PDF attachment in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T067 [US3] Add include_annotations configuration option to Settings in src/infrastructure/config/settings.py
-- [ ] T068 [US3] Add include_annotations CLI option to ingest command in src/infrastructure/cli/commands/ingest.py
+- [X] T056 [US3] Create Annotation dataclass with page, quote, comment, color, tags fields in src/infrastructure/adapters/zotero_annotation_resolver.py
+- [X] T057 [US3] Create AnnotationResolverPort protocol in src/application/ports/annotation_resolver.py
+- [X] T058 [US3] Create ZoteroAnnotationResolverAdapter class in src/infrastructure/adapters/zotero_annotation_resolver.py implementing AnnotationResolverPort
+- [X] T059 [US3] Implement ZoteroAnnotationResolverAdapter.fetch_annotations() using Web API children() method with itemType=annotation in src/infrastructure/adapters/zotero_annotation_resolver.py
+- [X] T060 [US3] Implement annotation normalization (pageIndex → page, extract quote/comment/color/tags) in src/infrastructure/adapters/zotero_annotation_resolver.py
+- [X] T061 [US3] Implement retry logic with exponential backoff (3 retries, base 1s, max 30s, jitter) for annotation fetching in src/infrastructure/adapters/zotero_annotation_resolver.py
+- [X] T062 [US3] Implement graceful skipping when annotations unavailable (log warning, continue import) in src/infrastructure/adapters/zotero_annotation_resolver.py
+- [X] T063 [US3] Implement ZoteroAnnotationResolverAdapter.index_annotations() creating annotation payloads with type:annotation tag in src/infrastructure/adapters/zotero_annotation_resolver.py
+- [X] T064 [US3] Create annotation payload structure with zotero.item_key, zotero.attachment_key, zotero.annotation.* fields in src/infrastructure/adapters/zotero_annotation_resolver.py
+- [X] T065 [US3] Integrate AnnotationResolver into batch_import_from_zotero use case when include_annotations=true in src/application/use_cases/batch_import_from_zotero.py
+- [X] T066 [US3] Call AnnotationResolver.index_annotations() after document processing for each PDF attachment in src/application/use_cases/batch_import_from_zotero.py
+- [X] T067 [US3] Add include_annotations configuration option to Settings in src/infrastructure/config/settings.py
+- [X] T068 [US3] Add include_annotations CLI option to ingest command in src/infrastructure/cli/commands/ingest.py
 
 **Checkpoint**: At this point, User Stories 1, 2, AND 3 should all work independently
 

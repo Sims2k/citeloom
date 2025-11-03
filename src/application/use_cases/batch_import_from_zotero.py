@@ -16,6 +16,7 @@ from ...domain.models.download_manifest import (
     DownloadManifestItem,
 )
 from ..dto.ingest import IngestRequest, IngestResult
+from ..ports.annotation_resolver import AnnotationResolverPort
 from ..ports.checkpoint_manager import CheckpointManagerPort
 from ..ports.converter import TextConverterPort
 from ..ports.chunker import ChunkerPort
@@ -52,6 +53,8 @@ def batch_import_from_zotero(
     audit_dir: Path | None = None,
     checkpoints_dir: Path | None = None,
     prefer_zotero_fulltext: bool = True,
+    include_annotations: bool = False,
+    annotation_resolver: AnnotationResolverPort | None = None,
 ) -> dict[str, Any]:
     """
     Orchestrate batch import of documents from Zotero collection.
@@ -82,6 +85,9 @@ def batch_import_from_zotero(
         downloads_dir: Directory for downloaded attachments (default: var/zotero_downloads)
         audit_dir: Optional directory for audit JSONL logs
         checkpoints_dir: Directory for checkpoint files (default: var/checkpoints)
+        prefer_zotero_fulltext: Whether to prefer Zotero fulltext when available
+        include_annotations: Whether to extract and index PDF annotations (default False)
+        annotation_resolver: Optional AnnotationResolverPort for annotation extraction (required if include_annotations=True)
     
     Returns:
         Dict with:
@@ -704,6 +710,97 @@ def batch_import_from_zotero(
                         "chunks_written": result.chunks_written,
                     },
                 )
+                
+                # Index annotations if enabled (T065, T066)
+                annotations_indexed = 0
+                if include_annotations and annotation_resolver:
+                    try:
+                        # Get zotero client from zotero_importer if available
+                        zotero_client = None
+                        if hasattr(zotero_importer, "zot") and zotero_importer.zot is not None:
+                            zotero_client = zotero_importer.zot
+                        elif zotero_config:
+                            # Create a new client from config
+                            from pyzotero import zotero
+                            from ...infrastructure.config.environment import get_env, get_env_bool, load_environment_variables
+                            load_environment_variables()
+                            
+                            library_id = zotero_config.get("library_id") or get_env("ZOTERO_LIBRARY_ID")
+                            library_type = zotero_config.get("library_type") or get_env("ZOTERO_LIBRARY_TYPE") or "user"
+                            use_local = zotero_config.get("local", False) or get_env_bool("ZOTERO_LOCAL", False)
+                            
+                            if library_id:
+                                if use_local:
+                                    try:
+                                        zotero_client = zotero.Zotero(library_id, library_type, api_key=None, local=True)
+                                    except Exception:
+                                        pass  # Fall through to remote
+                                
+                                if not zotero_client:
+                                    api_key = zotero_config.get("api_key") or get_env("ZOTERO_API_KEY")
+                                    if api_key:
+                                        try:
+                                            zotero_client = zotero.Zotero(library_id, library_type, api_key)
+                                        except Exception:
+                                            pass
+                        
+                        if zotero_client:
+                            # Fetch annotations
+                            annotations = annotation_resolver.fetch_annotations(
+                                attachment_key=attachment.attachment_key,
+                                zotero_client=zotero_client,
+                            )
+                            
+                            if annotations:
+                                # Index annotations
+                                annotations_indexed = annotation_resolver.index_annotations(
+                                    annotations=annotations,
+                                    item_key=item_key,
+                                    attachment_key=attachment.attachment_key,
+                                    project_id=project_id,
+                                    vector_index=index,
+                                    embedding_model=embedding_model,
+                                    resolver=resolver,
+                                )
+                                
+                                logger.info(
+                                    f"Indexed {annotations_indexed} annotations for attachment {attachment.attachment_key}",
+                                    extra={
+                                        "correlation_id": correlation_id,
+                                        "item_key": item_key,
+                                        "attachment_key": attachment.attachment_key,
+                                        "annotations_indexed": annotations_indexed,
+                                    },
+                                )
+                            else:
+                                logger.debug(
+                                    f"No annotations found for attachment {attachment.attachment_key}",
+                                    extra={
+                                        "correlation_id": correlation_id,
+                                        "attachment_key": attachment.attachment_key,
+                                    },
+                                )
+                        else:
+                            warning_msg = f"Zotero client not available for annotation fetching (attachment {attachment.attachment_key})"
+                            warnings.append(warning_msg)
+                            logger.warning(
+                                warning_msg,
+                                extra={
+                                    "correlation_id": correlation_id,
+                                    "attachment_key": attachment.attachment_key,
+                                },
+                            )
+                    except Exception as e:
+                        warning_msg = f"Failed to index annotations for attachment {attachment.attachment_key}: {e}"
+                        warnings.append(warning_msg)
+                        logger.warning(
+                            warning_msg,
+                            extra={
+                                "correlation_id": correlation_id,
+                                "attachment_key": attachment.attachment_key,
+                            },
+                            exc_info=True,
+                        )
                 
                 # Save checkpoint after each document completes (enables fine-grained resume)
                 if checkpoint and checkpoint_manager:
