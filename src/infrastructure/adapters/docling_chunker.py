@@ -355,11 +355,19 @@ class DoclingHybridChunkerAdapter:
             # T027: Calculate token count using embedding model tokenizer
             token_count = self._count_tokens(chunk_text, tokenizer)
 
+            # T028: Enhanced diagnostic logging for quality filtering
             # T024: Quality filtering
+            filter_reason = None
             if token_count < min_chunk_length:
+                filter_reason = f"token_count ({token_count}) < min_chunk_length ({min_chunk_length})"
                 logger.debug(
-                    f"Filtered chunk {idx}: token_count ({token_count}) < min_chunk_length ({min_chunk_length})",
-                    extra={"chunk_idx": idx, "token_count": token_count, "min_chunk_length": min_chunk_length},
+                    f"Filtered chunk {idx}: {filter_reason}",
+                    extra={
+                        "chunk_idx": idx,
+                        "token_count": token_count,
+                        "min_chunk_length": min_chunk_length,
+                        "chunk_text_length": len(chunk_text),
+                    },
                 )
                 filtered_count += 1
                 continue
@@ -368,12 +376,14 @@ class DoclingHybridChunkerAdapter:
             signal_to_noise = self._calculate_signal_to_noise_ratio(chunk_text)
 
             if signal_to_noise < min_signal_to_noise:
+                filter_reason = f"signal_to_noise ({signal_to_noise:.3f}) < min_signal_to_noise ({min_signal_to_noise:.3f})"
                 logger.debug(
-                    f"Filtered chunk {idx}: signal_to_noise ({signal_to_noise:.3f}) < min_signal_to_noise ({min_signal_to_noise:.3f})",
+                    f"Filtered chunk {idx}: {filter_reason}",
                     extra={
                         "chunk_idx": idx,
                         "signal_to_noise": signal_to_noise,
                         "min_signal_to_noise": min_signal_to_noise,
+                        "chunk_text_length": len(chunk_text),
                     },
                 )
                 filtered_count += 1
@@ -441,6 +451,8 @@ class DoclingHybridChunkerAdapter:
         """
         Manual chunking implementation when Docling is not available.
         
+        T027: Improved to produce multiple chunks proportional to document size.
+        
         Implements heading-aware chunking with tokenizer alignment and quality filtering.
         """
         from ...domain.models.chunk import Chunk, generate_chunk_id
@@ -448,12 +460,41 @@ class DoclingHybridChunkerAdapter:
         chunks: list[Chunk] = []
         filtered_count = 0
 
-        # Split text into sentences for more granular chunking
+        # T027: Split text into sentences for more granular chunking
+        # If sentence splitting fails or produces too few sentences, fall back to paragraph or fixed-size chunks
         sentences = self._split_into_sentences(plain_text)
         
         if not sentences:
-            logger.warning(f"No sentences found in text for doc_id={doc_id}")
+            logger.warning(f"No sentences found in text for doc_id={doc_id}, falling back to paragraph-based chunking")
+            # Fallback: split by paragraphs (double newlines)
+            paragraphs = [p.strip() for p in plain_text.split('\n\n') if p.strip()]
+            if paragraphs:
+                sentences = paragraphs
+            else:
+                # Last resort: split by single newlines
+                sentences = [s.strip() for s in plain_text.split('\n') if s.strip()]
+        
+        if not sentences:
+            logger.warning(f"No text segments found for chunking: doc_id={doc_id}")
             return []
+        
+        # T027: Ensure we have enough segments to create multiple chunks
+        # If document is large but sentences are few, try to split large sentences
+        if len(sentences) < 10 and len(plain_text) > max_tokens * 4:
+            logger.debug(f"Few sentences ({len(sentences)}) for large document ({len(plain_text)} chars), splitting long sentences")
+            expanded_sentences = []
+            for sentence in sentences:
+                # If sentence is very long, try to split it further
+                sentence_tokens = self._count_tokens(sentence, tokenizer)
+                if sentence_tokens > max_tokens:
+                    # Try splitting on commas or semicolons
+                    sub_sentences = re.split(r'[;,]+\s+', sentence)
+                    expanded_sentences.extend([s.strip() for s in sub_sentences if s.strip()])
+                else:
+                    expanded_sentences.append(sentence)
+            if len(expanded_sentences) > len(sentences):
+                sentences = expanded_sentences
+                logger.debug(f"Expanded sentences from {len(sentences)} to {len(expanded_sentences)}")
 
         # Build heading context map from heading_tree
         heading_context_map = self._build_heading_context_map(heading_tree)
@@ -477,6 +518,13 @@ class DoclingHybridChunkerAdapter:
                 # Apply quality filtering
                 token_count = self._count_tokens(chunk_text, tokenizer)
                 signal_to_noise = self._calculate_signal_to_noise_ratio(chunk_text)
+                
+                # T028: Enhanced diagnostic logging for quality filtering decisions
+                filter_reason = None
+                if token_count < min_chunk_length:
+                    filter_reason = f"token_count ({token_count}) < min_chunk_length ({min_chunk_length})"
+                elif signal_to_noise < min_signal_to_noise:
+                    filter_reason = f"signal_to_noise ({signal_to_noise:.3f}) < min_signal_to_noise ({min_signal_to_noise:.3f})"
                 
                 if token_count >= min_chunk_length and signal_to_noise >= min_signal_to_noise:
                     # Extract section info and page span
@@ -503,6 +551,23 @@ class DoclingHybridChunkerAdapter:
                         chunk_idx=chunk_idx,
                     )
                     
+                    # T030: Validate chunk ID uniqueness
+                    existing_ids = {chunk.id for chunk in chunks}
+                    if chunk_id in existing_ids:
+                        logger.warning(
+                            f"Chunk ID collision detected: {chunk_id}",
+                            extra={
+                                "doc_id": doc_id,
+                                "chunk_idx": chunk_idx,
+                                "page_span": page_span,
+                                "section_path": section_path,
+                                "diagnostic": "Chunk ID collision may cause issues with chunk retrieval. "
+                                              "This should not happen with proper chunk ID generation.",
+                            },
+                        )
+                        # Append suffix to make unique (shouldn't normally be needed)
+                        chunk_id = f"{chunk_id}_dup{chunk_idx}"
+                    
                     chunk = Chunk(
                         id=chunk_id,
                         doc_id=doc_id,
@@ -519,6 +584,19 @@ class DoclingHybridChunkerAdapter:
                     chunk_idx += 1
                     previous_chunk_end += len(chunk_text)
                 else:
+                    # T028: Log why chunk was filtered
+                    logger.debug(
+                        f"Filtered chunk {chunk_idx}: {filter_reason}",
+                        extra={
+                            "chunk_idx": chunk_idx,
+                            "token_count": token_count,
+                            "min_chunk_length": min_chunk_length,
+                            "signal_to_noise": signal_to_noise,
+                            "min_signal_to_noise": min_signal_to_noise,
+                            "filter_reason": filter_reason,
+                            "chunk_text_length": len(chunk_text),
+                        },
+                    )
                     filtered_count += 1
                 
                 # Start new chunk with overlap
@@ -540,7 +618,30 @@ class DoclingHybridChunkerAdapter:
             token_count = self._count_tokens(chunk_text, tokenizer)
             signal_to_noise = self._calculate_signal_to_noise_ratio(chunk_text)
             
-            if token_count >= min_chunk_length and signal_to_noise >= min_signal_to_noise:
+            # T029: Review quality filtering - ensure reasonable chunk counts
+            # Quality thresholds should filter only low-quality chunks, not most of the document
+            quality_pass = token_count >= min_chunk_length and signal_to_noise >= min_signal_to_noise
+            
+            # T027: For large documents, be more lenient with quality filtering to ensure multiple chunks
+            if not quality_pass and len(plain_text) > max_tokens * 10:
+                # For very large documents, allow slightly lower quality to ensure chunking works
+                relaxed_min_length = max(10, min_chunk_length // 2)  # At least 50% of normal threshold
+                relaxed_min_snr = max(0.1, min_signal_to_noise * 0.7)  # 70% of normal threshold
+                
+                if token_count >= relaxed_min_length and signal_to_noise >= relaxed_min_snr:
+                    logger.debug(
+                        f"Using relaxed quality threshold for large document: final chunk {chunk_idx}",
+                        extra={
+                            "chunk_idx": chunk_idx,
+                            "token_count": token_count,
+                            "signal_to_noise": signal_to_noise,
+                            "relaxed_min_length": relaxed_min_length,
+                            "relaxed_min_snr": relaxed_min_snr,
+                        },
+                    )
+                    quality_pass = True
+            
+            if quality_pass:
                 section_path, section_heading = self._extract_section_info_from_text(
                     chunk_text=chunk_text,
                     heading_tree=heading_tree,
@@ -563,6 +664,21 @@ class DoclingHybridChunkerAdapter:
                     chunk_idx=chunk_idx,
                 )
                 
+                # T030: Validate chunk ID uniqueness (also for final chunk)
+                existing_ids = {chunk.id for chunk in chunks}
+                if chunk_id in existing_ids:
+                    logger.warning(
+                        f"Chunk ID collision detected in final chunk: {chunk_id}",
+                        extra={
+                            "doc_id": doc_id,
+                            "chunk_idx": chunk_idx,
+                            "page_span": page_span,
+                            "section_path": section_path,
+                            "diagnostic": "Chunk ID collision may cause issues with chunk retrieval.",
+                        },
+                    )
+                    chunk_id = f"{chunk_id}_dup{chunk_idx}"
+                
                 chunk = Chunk(
                     id=chunk_id,
                     doc_id=doc_id,
@@ -577,13 +693,62 @@ class DoclingHybridChunkerAdapter:
                 
                 chunks.append(chunk)
             else:
+                # T028: Log why final chunk was filtered
+                filter_reason = None
+                if token_count < min_chunk_length:
+                    filter_reason = f"token_count ({token_count}) < min_chunk_length ({min_chunk_length})"
+                elif signal_to_noise < min_signal_to_noise:
+                    filter_reason = f"signal_to_noise ({signal_to_noise:.3f}) < min_signal_to_noise ({min_signal_to_noise:.3f})"
+                
+                logger.debug(
+                    f"Filtered final chunk {chunk_idx}: {filter_reason}",
+                    extra={
+                        "chunk_idx": chunk_idx,
+                        "token_count": token_count,
+                        "signal_to_noise": signal_to_noise,
+                        "filter_reason": filter_reason,
+                    },
+                )
                 filtered_count += 1
 
+        # T028: Enhanced diagnostic logging for quality filtering summary
         if filtered_count > 0:
             logger.info(
-                f"Quality filtering: {filtered_count} chunks filtered out (manual chunking)",
-                extra={"doc_id": doc_id, "filtered_count": filtered_count},
+                f"Quality filtering: {filtered_count} chunks filtered out of {filtered_count + len(chunks)} total chunks (manual chunking)",
+                extra={
+                    "doc_id": doc_id,
+                    "filtered_count": filtered_count,
+                    "accepted_count": len(chunks),
+                    "total_chunks_created": filtered_count + len(chunks),
+                    "filter_rate": f"{(filtered_count / (filtered_count + len(chunks)) * 100):.1f}%" if (filtered_count + len(chunks)) > 0 else "0%",
+                    "diagnostic": f"{filtered_count} chunks were filtered due to quality thresholds. "
+                                  f"If this number is too high, consider adjusting min_chunk_length ({min_chunk_length}) or min_signal_to_noise ({min_signal_to_noise})",
+                },
             )
+        else:
+            logger.debug(
+                f"Manual chunking complete: {len(chunks)} chunks created, {filtered_count} filtered",
+                extra={"doc_id": doc_id, "chunk_count": len(chunks)},
+            )
+        
+        # T026: Log warning if only 1 chunk created from large document
+        if len(chunks) == 1 and plain_text:
+            text_length = len(plain_text)
+            estimated_chunks = max(1, text_length // (max_tokens * 4))  # Rough estimate: 4 chars per token
+            if estimated_chunks > 5:
+                logger.warning(
+                    f"Only 1 chunk created from large document (estimated {estimated_chunks} chunks expected)",
+                    extra={
+                        "doc_id": doc_id,
+                        "chunks_created": len(chunks),
+                        "text_length": text_length,
+                        "estimated_chunks": estimated_chunks,
+                        "max_tokens": max_tokens,
+                        "diagnostic": "Only 1 chunk created suggests chunking may not be working correctly. "
+                                      "Possible causes: 1. Quality filtering too strict, 2. Sentence splitting failed, "
+                                      "3. Token counting inaccurate, 4. Document structure issues.",
+                    },
+                )
 
         return chunks
 

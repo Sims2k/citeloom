@@ -87,15 +87,15 @@
 
 ### Implementation for User Story 2
 
-- [ ] T022 [US2] Fix `_extract_page_map()` method to correctly extract page boundaries from Docling Document in `src/infrastructure/adapters/docling_converter.py`
-- [ ] T023 [US2] Add diagnostic logging for page map extraction failures in `_extract_page_map()` method
-- [ ] T024 [US2] Fix `_extract_heading_tree()` method to correctly extract heading hierarchy from Docling Document in `src/infrastructure/adapters/docling_converter.py`
-- [ ] T025 [US2] Add diagnostic logging for heading tree extraction failures in `_extract_heading_tree()` method
-- [ ] T026 [US2] Investigate and fix why only 1 chunk created from large documents in `src/infrastructure/adapters/docling_chunker.py`
-- [ ] T027 [US2] Improve manual chunking fallback to produce multiple chunks proportional to document size in `src/infrastructure/adapters/docling_chunker.py`
-- [ ] T028 [US2] Add diagnostic logging for quality filtering decisions (why chunks are filtered) in `src/infrastructure/adapters/docling_chunker.py`
-- [ ] T029 [US2] Review and adjust quality filtering thresholds to ensure reasonable chunk counts (not filtering all but one) in `src/infrastructure/adapters/docling_chunker.py`
-- [ ] T030 [US2] Add validation for chunk ID uniqueness with warning if collisions detected in `src/infrastructure/adapters/docling_chunker.py`
+- [X] T022 [US2] Fix `_extract_page_map()` method to correctly extract page boundaries from Docling Document in `src/infrastructure/adapters/docling_converter.py`
+- [X] T023 [US2] Add diagnostic logging for page map extraction failures in `_extract_page_map()` method
+- [X] T024 [US2] Fix `_extract_heading_tree()` method to correctly extract heading hierarchy from Docling Document in `src/infrastructure/adapters/docling_converter.py`
+- [X] T025 [US2] Add diagnostic logging for heading tree extraction failures in `_extract_heading_tree()` method
+- [X] T026 [US2] Investigate and fix why only 1 chunk created from large documents in `src/infrastructure/adapters/docling_chunker.py`
+- [X] T027 [US2] Improve manual chunking fallback to produce multiple chunks proportional to document size in `src/infrastructure/adapters/docling_chunker.py`
+- [X] T028 [US2] Add diagnostic logging for quality filtering decisions (why chunks are filtered) in `src/infrastructure/adapters/docling_chunker.py`
+- [X] T029 [US2] Review and adjust quality filtering thresholds to ensure reasonable chunk counts (not filtering all but one) in `src/infrastructure/adapters/docling_chunker.py`
+- [X] T030 [US2] Add validation for chunk ID uniqueness with warning if collisions detected in `src/infrastructure/adapters/docling_chunker.py`
 
 **Checkpoint**: User Story 2 complete - 20-page document produces 15-40 chunks with accurate page mapping and heading structure
 
