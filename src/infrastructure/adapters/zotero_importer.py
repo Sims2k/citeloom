@@ -474,6 +474,30 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
                         # Collection fetching not available or failed
                         pass
 
+                # Extract additional metadata fields
+                # Publication/journal information (for journal articles, book chapters, etc.)
+                publication_title = (
+                    item_data.get("publicationTitle") or
+                    item_data.get("journalAbbreviation") or
+                    item_data.get("publication") or
+                    item_data.get("bookTitle") or
+                    None
+                )
+                
+                # Volume, issue, pages (for journal articles)
+                volume = item_data.get("volume")
+                issue = item_data.get("issue")
+                pages = item_data.get("pages")
+                
+                # URL for web resources
+                url = item_data.get("url") or item_data.get("URL")
+                
+                # Language
+                language = item_data.get("language")
+                
+                # Item type
+                item_type = item_data.get("itemType", "")
+                
                 return {
                     "title": title,
                     "creators": creators,
@@ -482,6 +506,13 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
                     "DOI": doi,
                     "tags": tags,
                     "collections": collections,
+                    "publicationTitle": publication_title,
+                    "volume": volume,
+                    "issue": issue,
+                    "pages": pages,
+                    "url": url,
+                    "language": language,
+                    "itemType": item_type,
                 }
 
             except Exception as e:

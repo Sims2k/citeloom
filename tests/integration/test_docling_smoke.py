@@ -10,7 +10,8 @@ from src.infrastructure.adapters.docling_chunker import DoclingHybridChunkerAdap
 @pytest.fixture
 def sample_pdf_path():
     """Get path to sample PDF file if available."""
-    pdf_path = Path("assets/raw/Keen - 2025 - Clean Architecture with Python Implement scalable and maintainable applications using proven archit.pdf")
+    # Use smaller PDF for smoke tests (faster execution)
+    pdf_path = Path("assets/raw/Sakai - 2025 - AI Agent Architecture Mapping Domain, Agent, and Orchestration to Clean Architecture.pdf")
     if pdf_path.exists():
         return str(pdf_path.absolute())
     return None
@@ -42,11 +43,16 @@ def test_docling_conversion_page_map(docling_converter, sample_pdf_path):
     page_map = structure.get("page_map", {})
     assert isinstance(page_map, dict), "page_map should be a dictionary"
     
-    # Verify page_map maps page numbers to text offsets (or has placeholder structure)
+    # Verify page_map maps page numbers to text offset tuples (start_offset, end_offset)
     if page_map:
-        for page_num, offset in page_map.items():
+        for page_num, offset_tuple in page_map.items():
             assert isinstance(page_num, int), f"Page number should be int, got {type(page_num)}"
-            assert isinstance(offset, int), f"Offset should be int, got {type(offset)}"
+            assert isinstance(offset_tuple, tuple), f"Offset should be tuple (start, end), got {type(offset_tuple)}"
+            assert len(offset_tuple) == 2, f"Offset tuple should have 2 elements (start, end), got {len(offset_tuple)}"
+            start_offset, end_offset = offset_tuple
+            assert isinstance(start_offset, int), f"Start offset should be int, got {type(start_offset)}"
+            assert isinstance(end_offset, int), f"End offset should be int, got {type(end_offset)}"
+            assert start_offset <= end_offset, f"Start offset ({start_offset}) should be <= end offset ({end_offset})"
 
 
 def test_docling_conversion_heading_tree(docling_converter, sample_pdf_path):

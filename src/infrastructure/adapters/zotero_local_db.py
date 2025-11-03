@@ -591,6 +591,15 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
                 item_data = data_str if isinstance(data_str, dict) else {}
             
             # Extract metadata in format matching Web API
+            # Extract additional metadata fields (same as Web API)
+            publication_title = (
+                item_data.get("publicationTitle") or
+                item_data.get("journalAbbreviation") or
+                item_data.get("publication") or
+                item_data.get("bookTitle") or
+                None
+            )
+            
             metadata = {
                 "title": item_data.get("title", ""),
                 "creators": item_data.get("creators", []),
@@ -599,6 +608,13 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
                 "DOI": item_data.get("DOI", ""),
                 "tags": [tag.get("tag", "") for tag in item_data.get("tags", [])],
                 "collections": [],  # Would need additional query to get collections
+                "publicationTitle": publication_title,
+                "volume": item_data.get("volume"),
+                "issue": item_data.get("issue"),
+                "pages": item_data.get("pages"),
+                "url": item_data.get("url") or item_data.get("URL"),
+                "language": item_data.get("language"),
+                "itemType": item_data.get("itemType", ""),
             }
             
             return metadata

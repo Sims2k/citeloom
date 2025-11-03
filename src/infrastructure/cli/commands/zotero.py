@@ -228,18 +228,27 @@ def browse_collection(
         collection_key = collection
         collection_name = collection
         
+        # Cache collection info to avoid repeated lookups
+        collection_info_cache: dict[str, dict[str, Any]] = {}
+        
         # Try to find by name first (if not a valid key format)
         if len(collection) > 8 or not collection.isalnum():
             found = adapter.find_collection_by_name(collection)
             if found:
                 collection_key = found.get("key", "")
                 collection_name = found.get("name", "")
+                # Cache the collection info
+                if collection_key:
+                    collection_info_cache[collection_key] = found
             else:
                 console.print(f"[yellow]Collection '{collection}' not found by name, trying as key...[/yellow]")
         
         # Get items
         all_items = list(adapter.get_collection_items(collection_key, include_subcollections=include_subcollections))
         items = all_items[:limit]  # Limit items displayed
+        
+        # Cache metadata for all items to avoid duplicate API calls
+        metadata_cache: dict[str, dict[str, Any]] = {}
         
         if not all_items:
             console.print(f"[yellow]No items found in collection '{collection_name}'[/yellow]")
@@ -271,23 +280,38 @@ def browse_collection(
             item_type = item_data.get("itemType", "unknown")
             item_key = item.get("key", "")
             
-            # Get metadata for enhanced display
+            # Get metadata for enhanced display (use cache if available)
             try:
-                metadata = adapter.get_item_metadata(item_key)
+                metadata = metadata_cache.get(item_key)
+                if not metadata:
+                    metadata = adapter.get_item_metadata(item_key)
+                    metadata_cache[item_key] = metadata  # Cache for summary section
                 
                 # Extract creators (authors)
+                # Handle both formats: {firstName, lastName} and {name}
                 creators = metadata.get("creators", [])
                 if isinstance(creators, list) and creators:
-                    creators_str = ", ".join(
-                        [
-                            f"{c.get('firstName', '')} {c.get('lastName', '')}".strip()
-                            if isinstance(c, dict)
-                            else str(c)
-                            for c in creators[:2]
-                        ]
-                    )
+                    creator_names = []
+                    for c in creators[:2]:
+                        if isinstance(c, dict):
+                            # Try name field first (single string), then firstName/lastName
+                            if c.get("name"):
+                                creator_names.append(c.get("name", "").strip())
+                            else:
+                                first = c.get("firstName", "").strip()
+                                last = c.get("lastName", "").strip()
+                                full_name = f"{first} {last}".strip()
+                                if full_name:
+                                    creator_names.append(full_name)
+                        else:
+                            creator_names.append(str(c))
+                    
+                    creators_str = ", ".join([name for name in creator_names if name])
                     if len(creators) > 2:
                         creators_str += f" (+{len(creators) - 2})"
+                    
+                    if not creators_str:
+                        creators_str = "-"
                 else:
                     creators_str = "-"
                 
@@ -296,18 +320,30 @@ def browse_collection(
                 year_str = str(year) if year else "-"
             except Exception:
                 # Fallback to item_data if metadata unavailable
+                # Handle both formats: {firstName, lastName} and {name}
                 creators_list = item_data.get("creators", [])
                 if isinstance(creators_list, list) and creators_list:
-                    creators_str = ", ".join(
-                        [
-                            f"{c.get('firstName', '')} {c.get('lastName', '')}".strip()
-                            if isinstance(c, dict)
-                            else str(c)
-                            for c in creators_list[:2]
-                        ]
-                    )
+                    creator_names = []
+                    for c in creators_list[:2]:
+                        if isinstance(c, dict):
+                            # Try name field first (single string), then firstName/lastName
+                            if c.get("name"):
+                                creator_names.append(c.get("name", "").strip())
+                            else:
+                                first = c.get("firstName", "").strip()
+                                last = c.get("lastName", "").strip()
+                                full_name = f"{first} {last}".strip()
+                                if full_name:
+                                    creator_names.append(full_name)
+                        else:
+                            creator_names.append(str(c))
+                    
+                    creators_str = ", ".join([name for name in creator_names if name])
                     if len(creators_list) > 2:
                         creators_str += f" (+{len(creators_list) - 2})"
+                    
+                    if not creators_str:
+                        creators_str = "-"
                 else:
                     creators_str = "-"
                 
@@ -347,21 +383,51 @@ def browse_collection(
         console.print(table)
         
         # Show metadata summary for first few items (up to 5)
+        # Use metadata already fetched during table building to avoid duplicate API calls
         summary_items = items[:5]
         if len(summary_items) > 0:
             console.print("\n[bold]Metadata Summary:[/bold]")
+            
             for item in summary_items:
+                item_key = item.get("key", "")
                 item_data = item.get("data", {})
-                metadata = adapter.get_item_metadata(item.get("key", ""))
-                console.print(f"\n[cyan]{metadata.get('title', '(No title)')}[/cyan]")
+                
+                # Use cached metadata first (already fetched during table building above)
+                metadata = metadata_cache.get(item_key)
+                if not metadata:
+                    # Only fetch if not already cached (fallback - should rarely happen)
+                    try:
+                        metadata = adapter.get_item_metadata(item_key)
+                        metadata_cache[item_key] = metadata  # Add to cache for consistency
+                    except Exception:
+                        # Fallback to item_data if metadata fetch fails
+                        metadata = {
+                            "title": item_data.get("title", "(No title)"),
+                            "creators": item_data.get("creators", []),
+                            "year": None,
+                            "DOI": item_data.get("DOI") or item_data.get("doi"),
+                            "tags": [tag.get("tag", "") if isinstance(tag, dict) else str(tag) for tag in item_data.get("tags", [])],
+                        }
+                
+                console.print(f"\n[cyan]{metadata.get('title', item_data.get('title', '(No title)'))}[/cyan]")
                 if metadata.get("creators"):
-                    creators_str = ", ".join(
-                        [
-                            f"{c.get('firstName', '')} {c.get('lastName', '')}".strip()
-                            for c in metadata.get("creators", [])[:3]
-                        ]
-                    )
-                    console.print(f"  Authors: {creators_str}")
+                    # Handle both formats: {firstName, lastName} and {name}
+                    creator_names = []
+                    for c in metadata.get("creators", [])[:3]:
+                        if isinstance(c, dict):
+                            if c.get("name"):
+                                creator_names.append(c.get("name", "").strip())
+                            else:
+                                first = c.get("firstName", "").strip()
+                                last = c.get("lastName", "").strip()
+                                full_name = f"{first} {last}".strip()
+                                if full_name:
+                                    creator_names.append(full_name)
+                        else:
+                            creator_names.append(str(c))
+                    creators_str = ", ".join([name for name in creator_names if name])
+                    if creators_str:
+                        console.print(f"  Authors: {creators_str}")
                 if metadata.get("year"):
                     console.print(f"  Year: {metadata.get('year')}")
                 if metadata.get("DOI"):
@@ -369,6 +435,18 @@ def browse_collection(
                 if metadata.get("tags"):
                     tags_str = ", ".join(metadata.get("tags", [])[:5])
                     console.print(f"  Tags: {tags_str}")
+                if metadata.get("publicationTitle"):
+                    console.print(f"  Publication: {metadata.get('publicationTitle')}")
+                if metadata.get("volume"):
+                    console.print(f"  Volume: {metadata.get('volume')}")
+                if metadata.get("issue"):
+                    console.print(f"  Issue: {metadata.get('issue')}")
+                if metadata.get("pages"):
+                    console.print(f"  Pages: {metadata.get('pages')}")
+                if metadata.get("url"):
+                    console.print(f"  URL: {metadata.get('url')}")
+                if metadata.get("language"):
+                    console.print(f"  Language: {metadata.get('language')}")
         
     except ZoteroConnectionError as e:
         console.print(f"[red]Zotero connection error: {e.message}[/red]")
