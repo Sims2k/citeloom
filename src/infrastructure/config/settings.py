@@ -55,6 +55,52 @@ class PathsSettings(BaseModel):
     audit_dir: str = "var/audit"
 
 
+class ZoteroFulltextSettings(BaseModel):
+    """Zotero fulltext configuration settings."""
+    
+    min_length: int = 100  # Minimum text length for quality validation
+
+
+class ZoteroWebSettings(BaseModel):
+    """Zotero Web API configuration settings."""
+    
+    library_id: str = ""
+    api_key: str = ""
+    
+    def __init__(self, **data: Any) -> None:
+        """Initialize with environment variable precedence."""
+        # Ensure environment is loaded
+        load_environment_variables()
+        
+        # Override with environment variables if present (system env > .env > defaults)
+        # Environment variables take precedence over TOML values
+        env_library_id = get_env("ZOTERO_LIBRARY_ID")
+        if env_library_id is not None:
+            data["library_id"] = env_library_id
+        elif "library_id" not in data:
+            data["library_id"] = ""
+        
+        env_api_key = get_env("ZOTERO_API_KEY")
+        if env_api_key is not None:
+            data["api_key"] = env_api_key
+        elif "api_key" not in data:
+            data["api_key"] = ""
+        
+        super().__init__(**data)
+
+
+class ZoteroSettings(BaseModel):
+    """Zotero integration configuration settings."""
+    
+    mode: str = "web-first"  # "local-first", "web-first", "auto", "local-only", "web-only"
+    db_path: str | None = None  # Optional override for Zotero database path
+    storage_dir: str | None = None  # Optional override for Zotero storage directory
+    include_annotations: bool = False  # Whether to index PDF annotations
+    prefer_zotero_fulltext: bool = True  # Prefer Zotero fulltext when available
+    fulltext: ZoteroFulltextSettings = Field(default_factory=ZoteroFulltextSettings)
+    web: ZoteroWebSettings = Field(default_factory=ZoteroWebSettings)
+
+
 class ProjectSettings(BaseModel):
     """Project-specific configuration."""
     
@@ -78,6 +124,7 @@ class Settings(BaseModel):
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)
     qdrant: QdrantSettings = Field(default_factory=QdrantSettings)
     paths: PathsSettings = Field(default_factory=PathsSettings)
+    zotero: ZoteroSettings = Field(default_factory=ZoteroSettings)
     projects: dict[str, ProjectSettings] = Field(default_factory=dict)
     
     @classmethod
@@ -117,6 +164,20 @@ class Settings(BaseModel):
         paths_data = data.get("paths", {})
         paths = PathsSettings(**paths_data)
         
+        # Extract Zotero settings
+        zotero_data = data.get("zotero", {})
+        zotero_fulltext_data = zotero_data.get("fulltext", {})
+        zotero_web_data = zotero_data.get("web", {})
+        zotero = ZoteroSettings(
+            mode=zotero_data.get("mode", "web-first"),
+            db_path=zotero_data.get("db_path"),
+            storage_dir=zotero_data.get("storage_dir"),
+            include_annotations=zotero_data.get("include_annotations", False),
+            prefer_zotero_fulltext=zotero_data.get("prefer_zotero_fulltext", True),
+            fulltext=ZoteroFulltextSettings(**zotero_fulltext_data),
+            web=ZoteroWebSettings(**zotero_web_data),
+        )
+        
         # Extract project settings
         projects: dict[str, ProjectSettings] = {}
         # Handle nested project structure: [project."id"] creates data['project']['id']
@@ -139,6 +200,7 @@ class Settings(BaseModel):
             chunking=chunking,
             qdrant=qdrant,
             paths=paths,
+            zotero=zotero,
             projects=projects,
         )
     

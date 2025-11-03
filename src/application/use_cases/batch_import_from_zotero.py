@@ -10,12 +10,15 @@ from pathlib import Path
 from typing import Any
 
 from ...domain.models.checkpoint import DocumentCheckpoint, IngestionCheckpoint
+from ...domain.models.content_fingerprint import ContentFingerprint
 from ...domain.models.download_manifest import (
     DownloadManifest,
     DownloadManifestAttachment,
     DownloadManifestItem,
 )
+from ...domain.services.content_fingerprint import ContentFingerprintService
 from ..dto.ingest import IngestRequest, IngestResult
+from ..ports.annotation_resolver import AnnotationResolverPort
 from ..ports.checkpoint_manager import CheckpointManagerPort
 from ..ports.converter import TextConverterPort
 from ..ports.chunker import ChunkerPort
@@ -24,6 +27,7 @@ from ..ports.metadata_resolver import MetadataResolverPort
 from ..ports.progress_reporter import ProgressReporterPort
 from ..ports.vector_index import VectorIndexPort
 from ..ports.zotero_importer import ZoteroImporterPort
+from ..services.zotero_source_router import Strategy, ZoteroSourceRouter
 from ..use_cases.ingest_document import ingest_document
 
 logger = logging.getLogger(__name__)
@@ -51,6 +55,12 @@ def batch_import_from_zotero(
     downloads_dir: Path | None = None,
     audit_dir: Path | None = None,
     checkpoints_dir: Path | None = None,
+    prefer_zotero_fulltext: bool = True,
+    include_annotations: bool = False,
+    annotation_resolver: AnnotationResolverPort | None = None,
+    zotero_source_mode: Strategy | None = None,
+    zotero_local_db_path: Path | None = None,
+    zotero_storage_dir: Path | None = None,
 ) -> dict[str, Any]:
     """
     Orchestrate batch import of documents from Zotero collection.
@@ -81,6 +91,12 @@ def batch_import_from_zotero(
         downloads_dir: Directory for downloaded attachments (default: var/zotero_downloads)
         audit_dir: Optional directory for audit JSONL logs
         checkpoints_dir: Directory for checkpoint files (default: var/checkpoints)
+        prefer_zotero_fulltext: Whether to prefer Zotero fulltext when available
+        include_annotations: Whether to extract and index PDF annotations (default False)
+        annotation_resolver: Optional AnnotationResolverPort for annotation extraction (required if include_annotations=True)
+        zotero_source_mode: Optional source routing strategy ("local-first", "web-first", "auto", "local-only", "web-only")
+        zotero_local_db_path: Optional path to Zotero database file (for local adapter)
+        zotero_storage_dir: Optional path to Zotero storage directory (for local adapter)
     
     Returns:
         Dict with:
@@ -118,6 +134,44 @@ def batch_import_from_zotero(
     # Validate required adapters
     if not zotero_importer:
         raise ValueError("zotero_importer adapter required")
+    
+    # Create source router if mode is specified
+    source_router: ZoteroSourceRouter | None = None
+    if zotero_source_mode:
+        local_adapter = None
+        # Try to create local adapter if mode requires it
+        if zotero_source_mode in ("local-first", "auto", "local-only"):
+            try:
+                from ...infrastructure.adapters.zotero_local_db import LocalZoteroDbAdapter
+                
+                local_adapter = LocalZoteroDbAdapter(
+                    db_path=zotero_local_db_path,
+                    storage_dir=zotero_storage_dir,
+                )
+                logger.info(
+                    "Local Zotero adapter created for source routing",
+                    extra={"mode": zotero_source_mode, "correlation_id": correlation_id},
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to create local adapter, router will use web-only: {e}",
+                    extra={"mode": zotero_source_mode, "correlation_id": correlation_id, "error": str(e)},
+                )
+                if zotero_source_mode == "local-only":
+                    raise ValueError(
+                        f"Local-only strategy requires local adapter but creation failed: {e}"
+                    ) from e
+                # For other modes, continue without local adapter
+        
+        source_router = ZoteroSourceRouter(
+            local_adapter=local_adapter,
+            web_adapter=zotero_importer,
+            strategy=zotero_source_mode,
+        )
+        # Use router instead of direct importer
+        # Router implements ZoteroImporterPort interface, so this is type-safe
+        zotero_importer = source_router  # type: ignore[assignment]
+    
     if not converter:
         raise ValueError("converter adapter required")
     if not chunker:
@@ -475,15 +529,57 @@ def batch_import_from_zotero(
                     output_path = collection_downloads_dir / f"{stem}_{counter}.pdf"
                     counter += 1
                 
-                # Download attachment
+                # Download attachment (with source routing if router is used)
+                source_marker: str | None = None
                 try:
-                    downloaded_path = zotero_importer.download_attachment(
-                        item_key=item_key,
-                        attachment_key=attachment_key,
-                        output_path=output_path,
-                    )
+                    if source_router:
+                        # Router returns (file_path, source_marker) tuple
+                        downloaded_path, source_marker = source_router.download_attachment(
+                            item_key=item_key,
+                            attachment_key=attachment_key,
+                            output_path=output_path,
+                        )
+                    else:
+                        # Direct adapter returns just file_path
+                        downloaded_path = zotero_importer.download_attachment(
+                            item_key=item_key,
+                            attachment_key=attachment_key,
+                            output_path=output_path,
+                        )
                     
                     file_size = downloaded_path.stat().st_size if downloaded_path.exists() else None
+                    
+                    # Compute content fingerprint after successful download (T073)
+                    content_fingerprint = None
+                    try:
+                        # Use default policy versions for initial fingerprint
+                        # These will be validated against stored fingerprints during processing
+                        chunking_policy_version = "1.0"  # Default version
+                        embedding_policy_version = "1.0"  # Default version
+                        
+                        content_fingerprint = ContentFingerprintService.compute_fingerprint(
+                            file_path=downloaded_path,
+                            embedding_model=embedding_model,
+                            chunking_policy_version=chunking_policy_version,
+                            embedding_policy_version=embedding_policy_version,
+                        )
+                        logger.debug(
+                            f"Computed fingerprint for attachment {attachment_key}",
+                            extra={
+                                "correlation_id": correlation_id,
+                                "attachment_key": attachment_key,
+                                "content_hash": content_fingerprint.content_hash[:16] + "...",
+                            },
+                        )
+                    except Exception as e:
+                        # Log warning but continue - fingerprint computation failure shouldn't block download
+                        warning_msg = f"Failed to compute fingerprint for attachment {attachment_key}: {e}"
+                        warnings.append(warning_msg)
+                        logger.warning(
+                            warning_msg,
+                            extra={"correlation_id": correlation_id, "attachment_key": attachment_key},
+                            exc_info=True,
+                        )
                     
                     manifest_attachment = DownloadManifestAttachment(
                         attachment_key=attachment_key,
@@ -491,6 +587,8 @@ def batch_import_from_zotero(
                         local_path=downloaded_path.resolve(),  # Ensure absolute path
                         download_status="success",
                         file_size=file_size,
+                        content_fingerprint=content_fingerprint,
+                        source=source_marker,  # Store source marker ("local" | "web")
                     )
                     
                     total_attachments += 1
@@ -606,6 +704,79 @@ def batch_import_from_zotero(
                 logger.warning(warning_msg, extra={"correlation_id": correlation_id, "file_path": str(file_path)})
                 continue
             
+            # Compute content fingerprint for deduplication (T069)
+            # Policy versions for fingerprint computation
+            chunking_policy_version = "1.0"  # Default version - should match stored fingerprint policy
+            embedding_policy_version = "1.0"  # Default version - should match stored fingerprint policy
+            
+            computed_fingerprint: ContentFingerprint | None = None
+            try:
+                computed_fingerprint = ContentFingerprintService.compute_fingerprint(
+                    file_path=file_path,
+                    embedding_model=embedding_model,
+                    chunking_policy_version=chunking_policy_version,
+                    embedding_policy_version=embedding_policy_version,
+                )
+            except Exception as e:
+                warning_msg = f"Failed to compute fingerprint for {file_path.name}: {e}"
+                warnings.append(warning_msg)
+                logger.warning(warning_msg, extra={"correlation_id": correlation_id, "file_path": str(file_path)}, exc_info=True)
+                # Continue processing even if fingerprint computation fails
+                computed_fingerprint = None
+            
+            # Check if document is unchanged via fingerprint comparison (T070, T071, T072)
+            stored_fingerprint = attachment.content_fingerprint
+            is_unchanged = False
+            
+            if computed_fingerprint and stored_fingerprint:
+                # Validate policy versions match (T072) - if policy versions differ, treat as changed
+                policy_matches = (
+                    stored_fingerprint.chunking_policy_version == chunking_policy_version
+                    and stored_fingerprint.embedding_policy_version == embedding_policy_version
+                    and stored_fingerprint.embedding_model == embedding_model
+                )
+                
+                if policy_matches:
+                    # Compare fingerprints (hash + metadata) for collision protection (T071)
+                    is_unchanged = ContentFingerprintService.is_unchanged(
+                        stored=stored_fingerprint,
+                        computed=computed_fingerprint,
+                    )
+                else:
+                    # Policy mismatch - invalidate fingerprint, treat as changed
+                    logger.info(
+                        f"Policy mismatch detected for {file_path.name}. Policy change invalidates fingerprint. Re-processing required.",
+                        extra={
+                            "correlation_id": correlation_id,
+                            "file_path": str(file_path),
+                            "stored_chunking_policy": stored_fingerprint.chunking_policy_version,
+                            "stored_embedding_policy": stored_fingerprint.embedding_policy_version,
+                            "stored_embedding_model": stored_fingerprint.embedding_model,
+                            "current_chunking_policy": chunking_policy_version,
+                            "current_embedding_policy": embedding_policy_version,
+                            "current_embedding_model": embedding_model,
+                        },
+                    )
+                    is_unchanged = False
+            
+            # Skip processing if document is unchanged (T071, T075)
+            if is_unchanged:
+                logger.info(
+                    f"Skipping unchanged document: {file_path.name} (fingerprint match)",
+                    extra={
+                        "correlation_id": correlation_id,
+                        "file_path": str(file_path),
+                        "attachment_key": attachment.attachment_key,
+                        "content_hash": stored_fingerprint.content_hash[:16] + "..." if stored_fingerprint else None,
+                    },
+                )
+                # Still count it in total_documents_processed for progress tracking
+                total_documents_processed += 1
+                document_index += 1
+                if batch_progress:
+                    batch_progress.update(total_documents_processed)
+                continue
+            
             # Skip if already completed (resume logic)
             if file_path_str in completed_paths:
                 logger.debug(
@@ -652,6 +823,36 @@ def batch_import_from_zotero(
             
             document_index += 1
             
+            # Create fulltext resolver if prefer_zotero_fulltext is enabled
+            fulltext_resolver_instance = None
+            if prefer_zotero_fulltext:
+                try:
+                    from ...infrastructure.adapters.zotero_fulltext_resolver import ZoteroFulltextResolverAdapter
+                    from ...infrastructure.adapters.zotero_local_db import LocalZoteroDbAdapter
+                    
+                    # Try to create local DB adapter for fulltext resolver
+                    local_db = None
+                    if zotero_local_db_path or zotero_storage_dir:
+                        try:
+                            local_db = LocalZoteroDbAdapter(
+                                db_path=zotero_local_db_path,
+                                storage_dir=zotero_storage_dir,
+                            )
+                        except Exception:
+                            # Local adapter not available, fulltext resolver will use converter fallback
+                            pass
+                    
+                    # Create fulltext resolver with local DB and converter
+                    fulltext_resolver_instance = ZoteroFulltextResolverAdapter(
+                        local_db_adapter=local_db,
+                        converter=converter,
+                    )
+                except Exception as e:
+                    logger.debug(
+                        f"Failed to create fulltext resolver: {e}. Continuing without fulltext reuse.",
+                        extra={"correlation_id": correlation_id},
+                    )
+            
             try:
                 # Update checkpoint: marking as converting
                 if checkpoint:
@@ -666,6 +867,7 @@ def batch_import_from_zotero(
                         logger.warning(warning_msg, extra={"correlation_id": correlation_id}, exc_info=True)
                 
                 # Process document through ingest pipeline
+                # T097: Pass zotero.item_key and zotero.attachment_key to ingest_document
                 result: IngestResult = ingest_document(
                     request=ingest_request,
                     converter=converter,
@@ -678,11 +880,27 @@ def batch_import_from_zotero(
                     progress_reporter=progress_reporter,
                     document_index=document_index,
                     total_documents=total_attachments,
+                    fulltext_resolver=fulltext_resolver_instance,
+                    attachment_key=attachment.attachment_key,
+                    prefer_zotero_fulltext=prefer_zotero_fulltext,
+                    item_key=item_key,
                 )
                 
                 total_chunks += result.chunks_written
                 chunks_since_last_checkpoint += result.chunks_written
                 total_documents_processed += result.documents_processed
+                
+                # Update content fingerprint in manifest after document processing completes (T074)
+                if computed_fingerprint:
+                    attachment.content_fingerprint = computed_fingerprint
+                    logger.debug(
+                        f"Updated fingerprint in manifest for attachment {attachment.attachment_key}",
+                        extra={
+                            "correlation_id": correlation_id,
+                            "attachment_key": attachment.attachment_key,
+                            "content_hash": computed_fingerprint.content_hash[:16] + "...",
+                        },
+                    )
                 
                 # Update checkpoint: mark as completed
                 if checkpoint:
@@ -703,6 +921,97 @@ def batch_import_from_zotero(
                         "chunks_written": result.chunks_written,
                     },
                 )
+                
+                # Index annotations if enabled (T065, T066)
+                annotations_indexed = 0
+                if include_annotations and annotation_resolver:
+                    try:
+                        # Get zotero client from zotero_importer if available
+                        zotero_client = None
+                        if hasattr(zotero_importer, "zot") and zotero_importer.zot is not None:
+                            zotero_client = zotero_importer.zot
+                        elif zotero_config:
+                            # Create a new client from config
+                            from pyzotero import zotero
+                            from ...infrastructure.config.environment import get_env, get_env_bool, load_environment_variables
+                            load_environment_variables()
+                            
+                            library_id = zotero_config.get("library_id") or get_env("ZOTERO_LIBRARY_ID")
+                            library_type = zotero_config.get("library_type") or get_env("ZOTERO_LIBRARY_TYPE") or "user"
+                            use_local = zotero_config.get("local", False) or get_env_bool("ZOTERO_LOCAL", False)
+                            
+                            if library_id:
+                                if use_local:
+                                    try:
+                                        zotero_client = zotero.Zotero(library_id, library_type, api_key=None, local=True)
+                                    except Exception:
+                                        pass  # Fall through to remote
+                                
+                                if not zotero_client:
+                                    api_key = zotero_config.get("api_key") or get_env("ZOTERO_API_KEY")
+                                    if api_key:
+                                        try:
+                                            zotero_client = zotero.Zotero(library_id, library_type, api_key)
+                                        except Exception:
+                                            pass
+                        
+                        if zotero_client:
+                            # Fetch annotations
+                            annotations = annotation_resolver.fetch_annotations(
+                                attachment_key=attachment.attachment_key,
+                                zotero_client=zotero_client,
+                            )
+                            
+                            if annotations:
+                                # Index annotations
+                                annotations_indexed = annotation_resolver.index_annotations(
+                                    annotations=annotations,
+                                    item_key=item_key,
+                                    attachment_key=attachment.attachment_key,
+                                    project_id=project_id,
+                                    vector_index=index,
+                                    embedding_model=embedding_model,
+                                    resolver=resolver,
+                                )
+                                
+                                logger.info(
+                                    f"Indexed {annotations_indexed} annotations for attachment {attachment.attachment_key}",
+                                    extra={
+                                        "correlation_id": correlation_id,
+                                        "item_key": item_key,
+                                        "attachment_key": attachment.attachment_key,
+                                        "annotations_indexed": annotations_indexed,
+                                    },
+                                )
+                            else:
+                                logger.debug(
+                                    f"No annotations found for attachment {attachment.attachment_key}",
+                                    extra={
+                                        "correlation_id": correlation_id,
+                                        "attachment_key": attachment.attachment_key,
+                                    },
+                                )
+                        else:
+                            warning_msg = f"Zotero client not available for annotation fetching (attachment {attachment.attachment_key})"
+                            warnings.append(warning_msg)
+                            logger.warning(
+                                warning_msg,
+                                extra={
+                                    "correlation_id": correlation_id,
+                                    "attachment_key": attachment.attachment_key,
+                                },
+                            )
+                    except Exception as e:
+                        warning_msg = f"Failed to index annotations for attachment {attachment.attachment_key}: {e}"
+                        warnings.append(warning_msg)
+                        logger.warning(
+                            warning_msg,
+                            extra={
+                                "correlation_id": correlation_id,
+                                "attachment_key": attachment.attachment_key,
+                            },
+                            exc_info=True,
+                        )
                 
                 # Save checkpoint after each document completes (enables fine-grained resume)
                 if checkpoint and checkpoint_manager:
@@ -820,6 +1129,20 @@ def batch_import_from_zotero(
                                 exc_info=True,
                             )
                 continue
+    
+    # Save updated manifest with fingerprints after processing completes (T074)
+    if download_manifest and manifest_path:
+        try:
+            with manifest_path.open("w") as f:
+                json.dump(download_manifest.to_dict(), f, indent=2)
+            logger.debug(
+                f"Updated download manifest saved with fingerprints: {manifest_path}",
+                extra={"correlation_id": correlation_id, "manifest_path": str(manifest_path)},
+            )
+        except Exception as e:
+            warning_msg = f"Failed to save updated manifest: {e}"
+            warnings.append(warning_msg)
+            logger.warning(warning_msg, extra={"correlation_id": correlation_id}, exc_info=True)
     
     # Finish batch progress
     if batch_progress:
@@ -1514,6 +1837,34 @@ def process_downloaded_files(
             
             document_index += 1
             
+            # Create fulltext resolver if prefer_zotero_fulltext is enabled
+            # Note: prefer_zotero_fulltext defaults to True for process_downloaded_files helper
+            prefer_zotero_fulltext_val = True  # Default for process_downloaded_files
+            fulltext_resolver_instance = None
+            if prefer_zotero_fulltext_val:
+                try:
+                    from ...infrastructure.adapters.zotero_fulltext_resolver import ZoteroFulltextResolverAdapter
+                    from ...infrastructure.adapters.zotero_local_db import LocalZoteroDbAdapter
+                    
+                    # Try to create local DB adapter for fulltext resolver
+                    local_db = None
+                    try:
+                        local_db = LocalZoteroDbAdapter()
+                    except Exception:
+                        # Local adapter not available, fulltext resolver will use converter fallback
+                        pass
+                    
+                    # Create fulltext resolver with local DB and converter
+                    fulltext_resolver_instance = ZoteroFulltextResolverAdapter(
+                        local_db_adapter=local_db,
+                        converter=converter,
+                    )
+                except Exception as e:
+                    logger.debug(
+                        f"Failed to create fulltext resolver: {e}. Continuing without fulltext reuse.",
+                        extra={"correlation_id": correlation_id},
+                    )
+            
             try:
                 # Update checkpoint: marking as converting
                 if checkpoint:
@@ -1527,6 +1878,7 @@ def process_downloaded_files(
                         logger.warning(warning_msg, extra={"correlation_id": correlation_id}, exc_info=True)
                 
                 # Process document through ingest pipeline
+                # T097: Pass zotero.item_key and zotero.attachment_key to ingest_document
                 result: IngestResult = ingest_document(
                     request=ingest_request,
                     converter=converter,
@@ -1539,6 +1891,10 @@ def process_downloaded_files(
                     progress_reporter=progress_reporter,
                     document_index=document_index,
                     total_documents=total_attachments,
+                    fulltext_resolver=fulltext_resolver_instance,
+                    attachment_key=attachment.attachment_key,
+                    prefer_zotero_fulltext=prefer_zotero_fulltext_val,
+                    item_key=item_key,
                 )
                 
                 total_chunks += result.chunks_written

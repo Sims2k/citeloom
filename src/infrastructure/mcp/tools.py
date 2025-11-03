@@ -810,10 +810,19 @@ async def handle_inspect_collection(arguments: dict[str, Any], settings: Setting
                 "on_disk_hnsw": False,
             }
             
+            # T102: Expose embedding model information in response
             return {
                 "project": project_id,
                 "collection": collection_name,
                 "size": size,
+                "embedding_model": {  # T102: Enhanced embedding model info
+                    "dense_model": dense_model_id,
+                    "sparse_model": sparse_model_id,
+                    "project_config_model": project_settings.embedding_model,
+                    "hybrid_enabled": project_settings.hybrid_enabled,
+                    "named_vectors": named_vectors,
+                },
+                # Legacy fields for backward compatibility
                 "dense_model": dense_model_id,
                 "sparse_model": sparse_model_id,
                 "named_vectors": named_vectors,
