@@ -224,31 +224,18 @@ def browse_collection(
     adapter = _get_zotero_adapter()
     
     try:
-        # Find collection by name or use key directly
-        collection_key = collection
-        collection_name = collection
+        # Create command-scoped caches (T012, T013)
+        collection_cache: dict[str, dict[str, Any]] = {}
+        item_cache: dict[str, dict[str, Any]] = {}
         
-        # Cache collection info to avoid repeated lookups
-        collection_info_cache: dict[str, dict[str, Any]] = {}
-        
-        # Try to find by name first (if not a valid key format)
-        if len(collection) > 8 or not collection.isalnum():
-            found = adapter.find_collection_by_name(collection)
-            if found:
-                collection_key = found.get("key", "")
-                collection_name = found.get("name", "")
-                # Cache the collection info
-                if collection_key:
-                    collection_info_cache[collection_key] = found
-            else:
-                console.print(f"[yellow]Collection '{collection}' not found by name, trying as key...[/yellow]")
+        # Get collection info using get_collection_info() with cache (T014)
+        collection_info = adapter.get_collection_info(collection, collection_cache=collection_cache)
+        collection_key = collection_info["key"]
+        collection_name = collection_info["name"]
         
         # Get items
         all_items = list(adapter.get_collection_items(collection_key, include_subcollections=include_subcollections))
         items = all_items[:limit]  # Limit items displayed
-        
-        # Cache metadata for all items to avoid duplicate API calls
-        metadata_cache: dict[str, dict[str, Any]] = {}
         
         if not all_items:
             console.print(f"[yellow]No items found in collection '{collection_name}'[/yellow]")
@@ -274,90 +261,51 @@ def browse_collection(
         table.add_column("Attachments", justify="right", style="magenta")
         table.add_column("Date Added", style="white")
         
+        # Use basic item data directly from collection items response for table (T017)
         for item in items:
             item_data = item.get("data", {})
             title = item_data.get("title", "(No title)")
             item_type = item_data.get("itemType", "unknown")
             item_key = item.get("key", "")
             
-            # Get metadata for enhanced display (use cache if available)
-            try:
-                metadata = metadata_cache.get(item_key)
-                if not metadata:
-                    metadata = adapter.get_item_metadata(item_key)
-                    metadata_cache[item_key] = metadata  # Cache for summary section
-                
-                # Extract creators (authors)
-                # Handle both formats: {firstName, lastName} and {name}
-                creators = metadata.get("creators", [])
-                if isinstance(creators, list) and creators:
-                    creator_names = []
-                    for c in creators[:2]:
-                        if isinstance(c, dict):
-                            # Try name field first (single string), then firstName/lastName
-                            if c.get("name"):
-                                creator_names.append(c.get("name", "").strip())
-                            else:
-                                first = c.get("firstName", "").strip()
-                                last = c.get("lastName", "").strip()
-                                full_name = f"{first} {last}".strip()
-                                if full_name:
-                                    creator_names.append(full_name)
+            # Extract creators directly from item_data (T017)
+            creators_list = item_data.get("creators", [])
+            if isinstance(creators_list, list) and creators_list:
+                creator_names = []
+                for c in creators_list[:2]:
+                    if isinstance(c, dict):
+                        # Try name field first (single string), then firstName/lastName
+                        if c.get("name"):
+                            creator_names.append(c.get("name", "").strip())
                         else:
-                            creator_names.append(str(c))
-                    
-                    creators_str = ", ".join([name for name in creator_names if name])
-                    if len(creators) > 2:
-                        creators_str += f" (+{len(creators) - 2})"
-                    
-                    if not creators_str:
-                        creators_str = "-"
-                else:
-                    creators_str = "-"
+                            first = c.get("firstName", "").strip()
+                            last = c.get("lastName", "").strip()
+                            full_name = f"{first} {last}".strip()
+                            if full_name:
+                                creator_names.append(full_name)
+                    else:
+                        creator_names.append(str(c))
                 
-                # Extract year
-                year = metadata.get("year")
-                year_str = str(year) if year else "-"
-            except Exception:
-                # Fallback to item_data if metadata unavailable
-                # Handle both formats: {firstName, lastName} and {name}
-                creators_list = item_data.get("creators", [])
-                if isinstance(creators_list, list) and creators_list:
-                    creator_names = []
-                    for c in creators_list[:2]:
-                        if isinstance(c, dict):
-                            # Try name field first (single string), then firstName/lastName
-                            if c.get("name"):
-                                creator_names.append(c.get("name", "").strip())
-                            else:
-                                first = c.get("firstName", "").strip()
-                                last = c.get("lastName", "").strip()
-                                full_name = f"{first} {last}".strip()
-                                if full_name:
-                                    creator_names.append(full_name)
-                        else:
-                            creator_names.append(str(c))
-                    
-                    creators_str = ", ".join([name for name in creator_names if name])
-                    if len(creators_list) > 2:
-                        creators_str += f" (+{len(creators_list) - 2})"
-                    
-                    if not creators_str:
-                        creators_str = "-"
-                else:
-                    creators_str = "-"
+                creators_str = ", ".join([name for name in creator_names if name])
+                if len(creators_list) > 2:
+                    creators_str += f" (+{len(creators_list) - 2})"
                 
-                # Try to extract year from date field
-                date_str = item_data.get("date", "")
-                year_str = "-"
-                if date_str:
-                    # Try to extract year from date string (YYYY-MM-DD or YYYY format)
-                    try:
-                        year_int = int(date_str[:4]) if len(date_str) >= 4 else None
-                        if year_int:
-                            year_str = str(year_int)
-                    except (ValueError, TypeError):
-                        pass
+                if not creators_str:
+                    creators_str = "-"
+            else:
+                creators_str = "-"
+            
+            # Extract year directly from item_data date field (T017)
+            date_str = item_data.get("date", "")
+            year_str = "-"
+            if date_str:
+                # Try to extract year from date string (YYYY-MM-DD or YYYY format)
+                try:
+                    year_int = int(date_str[:4]) if len(date_str) >= 4 else None
+                    if year_int:
+                        year_str = str(year_int)
+                except (ValueError, TypeError):
+                    pass
             
             # Get attachment count
             try:
@@ -392,13 +340,13 @@ def browse_collection(
                 item_key = item.get("key", "")
                 item_data = item.get("data", {})
                 
-                # Use cached metadata first (already fetched during table building above)
-                metadata = metadata_cache.get(item_key)
+                # Use cached metadata first (already fetched during table building above) (T016)
+                metadata = item_cache.get(item_key)
                 if not metadata:
                     # Only fetch if not already cached (fallback - should rarely happen)
                     try:
-                        metadata = adapter.get_item_metadata(item_key)
-                        metadata_cache[item_key] = metadata  # Add to cache for consistency
+                        metadata = adapter.get_item_metadata(item_key, collection_cache=collection_cache)
+                        item_cache[item_key] = metadata  # Add to cache for consistency
                     except Exception:
                         # Fallback to item_data if metadata fetch fails
                         metadata = {

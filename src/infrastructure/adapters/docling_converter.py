@@ -28,6 +28,9 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Module-level cache for process-scoped converter instances (T004)
+_converter_cache: dict[str, "DoclingConverterAdapter"] = {}
+
 
 class TimeoutError(Exception):
     """Raised when document conversion exceeds timeout limits."""
@@ -219,6 +222,44 @@ class DoclingConverterAdapter:
                 exc_info=True,
             )
             raise
+
+
+def get_converter(config_hash: str | None = None) -> DoclingConverterAdapter:
+    """
+    Get or create shared DoclingConverterAdapter instance (process-scoped).
+    
+    This factory function implements a singleton pattern with module-level cache
+    to avoid reinitialization overhead on subsequent commands in the same process.
+    
+    Args:
+        config_hash: Optional configuration hash for variant instances
+            (default: "default" for single instance)
+    
+    Returns:
+        DoclingConverterAdapter instance (shared across process lifetime)
+    
+    Behavior:
+        - First call: Creates new DoclingConverterAdapter, caches it, returns instance
+        - Subsequent calls: Returns cached instance (no reinitialization overhead)
+        - Cache key: f"converter:{config_hash or 'default'}"
+        - Lifetime: Process-scoped (cleared only on process termination)
+    
+    Thread Safety:
+        - Module-level cache is safe for single-user CLI (no concurrent access expected)
+        - No locking required for single-threaded CLI operations
+    
+    Raises:
+        ImportError: If Docling is not available (Windows compatibility)
+    """
+    cache_key = f"converter:{config_hash or 'default'}"
+    
+    if cache_key not in _converter_cache:
+        logger.debug(f"Creating new converter instance (cache_key={cache_key})")
+        _converter_cache[cache_key] = DoclingConverterAdapter()
+    else:
+        logger.debug(f"Reusing cached converter instance (cache_key={cache_key})")
+    
+    return _converter_cache[cache_key]
     
     def _extract_page_map(self, doc: Any, plain_text: str) -> dict[int, tuple[int, int]]:
         """
@@ -699,3 +740,76 @@ class DoclingConverterAdapter:
                 exc_info=True,
             )
             raise
+
+
+def get_converter(config_hash: str | None = None) -> DoclingConverterAdapter:
+    """
+    Get or create shared DoclingConverterAdapter instance (process-scoped).
+    
+    This factory function implements a singleton pattern with module-level cache
+    to avoid reinitialization overhead on subsequent commands in the same process.
+    
+    Args:
+        config_hash: Optional configuration hash for variant instances
+            (default: "default" for single instance)
+    
+    Returns:
+        DoclingConverterAdapter instance (shared across process lifetime)
+    
+    Behavior:
+        - First call: Creates new DoclingConverterAdapter, caches it, returns instance
+        - Subsequent calls: Returns cached instance (no reinitialization overhead)
+        - Cache key: f"converter:{config_hash or 'default'}"
+        - Lifetime: Process-scoped (cleared only on process termination)
+    
+    Thread Safety:
+        - Module-level cache is safe for single-user CLI (no concurrent access expected)
+        - No locking required for single-threaded CLI operations
+    
+    Raises:
+        ImportError: If Docling is not available (Windows compatibility)
+    """
+    cache_key = f"converter:{config_hash or 'default'}"
+    
+    if cache_key not in _converter_cache:
+        logger.debug(f"Creating new converter instance (cache_key={cache_key})")
+        _converter_cache[cache_key] = DoclingConverterAdapter()
+    else:
+        logger.debug(f"Reusing cached converter instance (cache_key={cache_key})")
+    
+    return _converter_cache[cache_key]
+    """
+    Get or create shared DoclingConverterAdapter instance (process-scoped).
+    
+    This factory function implements a singleton pattern with module-level cache
+    to avoid reinitialization overhead on subsequent commands in the same process.
+    
+    Args:
+        config_hash: Optional configuration hash for variant instances
+            (default: "default" for single instance)
+    
+    Returns:
+        DoclingConverterAdapter instance (shared across process lifetime)
+    
+    Behavior:
+        - First call: Creates new DoclingConverterAdapter, caches it, returns instance
+        - Subsequent calls: Returns cached instance (no reinitialization overhead)
+        - Cache key: f"converter:{config_hash or 'default'}"
+        - Lifetime: Process-scoped (cleared only on process termination)
+    
+    Thread Safety:
+        - Module-level cache is safe for single-user CLI (no concurrent access expected)
+        - No locking required for single-threaded CLI operations
+    
+    Raises:
+        ImportError: If Docling is not available (Windows compatibility)
+    """
+    cache_key = f"converter:{config_hash or 'default'}"
+    
+    if cache_key not in _converter_cache:
+        logger.debug(f"Creating new converter instance (cache_key={cache_key})")
+        _converter_cache[cache_key] = DoclingConverterAdapter()
+    else:
+        logger.debug(f"Reusing cached converter instance (cache_key={cache_key})")
+    
+    return _converter_cache[cache_key]

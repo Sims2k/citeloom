@@ -398,15 +398,28 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
 
         return self._retry_with_backoff(_download_file, max_retries=3, base_delay=1.0, max_delay=30.0, jitter=True)
 
-    def get_item_metadata(self, item_key: str) -> dict[str, Any]:
+    def get_item_metadata(
+        self,
+        item_key: str,
+        collection_cache: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """
-        Get full metadata for a Zotero item.
+        Get full metadata for a Zotero item with optional collection cache to avoid redundant lookups.
         
         Args:
             item_key: Zotero item key
+            collection_cache: Optional command-scoped cache for collection metadata
+                - Key: collection_key (str)
+                - Value: collection metadata dict from Zotero API
         
         Returns:
             Item metadata dict with keys: title, creators (authors), date (year), DOI, tags, collections
+        
+        Behavior:
+            - Fetch item metadata from API
+            - If item belongs to collections, check collection_cache before fetching collection info
+            - Use cached collection metadata if available, otherwise fetch and cache
+            - Return item metadata with collection names resolved
         
         Raises:
             ZoteroConnectionError: If connection fails
@@ -453,20 +466,31 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
                         elif isinstance(tag_obj, str):
                             tags.append(tag_obj)
 
-                # Extract collections
+                # Extract collections - use cache if available
                 collections: list[str] = []
                 collection_keys = item_data.get("collections", [])
                 if isinstance(collection_keys, list) and collection_keys:
                     try:
-                        # Fetch collection names by key
+                        # Fetch collection names by key - check cache first
                         for coll_key in collection_keys:
                             try:
-                                self._rate_limit()
-                                coll = self.zot.collection(coll_key)  # type: ignore[union-attr]
-                                coll_data = coll.get("data", {})
-                                coll_name = coll_data.get("name", "")
-                                if coll_name:
-                                    collections.append(coll_name)
+                                # Check cache first
+                                if collection_cache and coll_key in collection_cache:
+                                    coll_data = collection_cache[coll_key]
+                                    coll_name = coll_data.get("name", "")
+                                    if coll_name:
+                                        collections.append(coll_name)
+                                else:
+                                    # Cache miss - fetch and cache
+                                    self._rate_limit()
+                                    coll = self.zot.collection(coll_key)  # type: ignore[union-attr]
+                                    coll_data = coll.get("data", {})
+                                    coll_name = coll_data.get("name", "")
+                                    if coll_name:
+                                        collections.append(coll_name)
+                                    # Cache if cache provided
+                                    if collection_cache is not None:
+                                        collection_cache[coll_key] = coll_data
                             except Exception:
                                 # Collection fetch failed, skip
                                 pass
@@ -602,6 +626,87 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
                 raise ZoteroAPIError(f"Failed to get recent items: {e}", details={"error": str(e)}) from e
 
         return self._retry_with_backoff(_fetch_recent_items)
+
+    def get_collection_info(
+        self,
+        collection_name_or_key: str,
+        collection_cache: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Get collection information with optional command-scoped cache.
+        
+        Args:
+            collection_name_or_key: Collection name or key identifier
+            collection_cache: Optional command-scoped cache for collection metadata
+                - Key: collection_key (str)
+                - Value: collection metadata dict from Zotero API
+        
+        Returns:
+            Collection information dict with keys: key, name, metadata
+        
+        Behavior:
+            - If collection_cache provided and collection_key found, return cached data
+            - Otherwise, fetch from API, cache if collection_cache provided, return data
+            - Cache key: collection_key from API response
+        """
+        if self.zot is None:
+            raise ZoteroConnectionError("Zotero client not initialized. Client initialization failed")
+
+        # Check if it's a collection key (8 alphanumeric chars) or name
+        if len(collection_name_or_key) == 8 and collection_name_or_key.isalnum():
+            # It's a key - check cache first
+            collection_key = collection_name_or_key
+            if collection_cache and collection_key in collection_cache:
+                cached = collection_cache[collection_key]
+                return {
+                    "key": cached.get("key", collection_key),
+                    "name": cached.get("name", ""),
+                    "metadata": cached,
+                }
+            
+            # Fetch from API
+            def _fetch_by_key() -> dict[str, Any]:
+                self._rate_limit()
+                try:
+                    coll = self.zot.collection(collection_key)  # type: ignore[union-attr]
+                    coll_data = coll.get("data", {})
+                    coll_key = coll_data.get("key", collection_key)
+                    coll_name = coll_data.get("name", "")
+                    
+                    result = {
+                        "key": coll_key,
+                        "name": coll_name,
+                        "metadata": coll_data,
+                    }
+                    
+                    # Cache if cache provided
+                    if collection_cache is not None:
+                        collection_cache[coll_key] = coll_data
+                    
+                    return result
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if "rate" in error_str or "limit" in error_str or "429" in error_str:
+                        raise ZoteroRateLimitError("Zotero API rate limit exceeded", retry_after=60) from e
+                    raise ZoteroAPIError(
+                        f"Failed to get collection info: {e}",
+                        details={"collection_key": collection_key, "error": str(e)},
+                    ) from e
+            
+            return self._retry_with_backoff(_fetch_by_key)
+        else:
+            # It's a name - find by name first
+            found = self.find_collection_by_name(collection_name_or_key)
+            if found:
+                coll_key = found.get("key", "")
+                if coll_key:
+                    # Use get_collection_info recursively with key (will check cache)
+                    return self.get_collection_info(coll_key, collection_cache=collection_cache)
+            else:
+                raise ZoteroAPIError(
+                    f"Collection not found: {collection_name_or_key}",
+                    details={"collection_name_or_key": collection_name_or_key},
+                )
 
     def find_collection_by_name(self, collection_name: str) -> dict[str, Any] | None:
         """
