@@ -128,24 +128,38 @@ uv run citeloom query run --project research/papers \
 **Scenario**: You have a Zotero library with a collection of research papers and want to import all PDF attachments.
 
 ```bash
-# 1. Browse your Zotero library to find collections
+# 1. Browse your Zotero library to find collections (works offline!)
 uv run citeloom zotero list-collections
 
 # 2. Browse a specific collection to see what's available
-uv run citeloom zotero browse-collection --collection "Machine Learning Papers"
+uv run citeloom zotero browse-collection "Machine Learning Papers" --limit 20
 
-# 3. Import all PDFs from a Zotero collection
+# 3. List tags with usage counts
+uv run citeloom zotero list-tags
+
+# 4. View recent items
+uv run citeloom zotero recent-items --limit 10
+
+# 5. Import all PDFs from a Zotero collection (with full-text reuse for speed)
 uv run citeloom ingest run \
   --project research/ml-papers \
-  --zotero-collection "Machine Learning Papers"
+  --zotero-collection "Machine Learning Papers" \
+  --prefer-zotero-fulltext \
+  --include-annotations
 
-# 4. Query the imported papers
+# 6. Query the imported papers
 uv run citeloom query run \
   --project research/ml-papers \
   --query "transformer architecture" \
   --hybrid \
   --top-k 8
 ```
+
+**New Features**:
+- **Offline browsing**: All `zotero` commands work offline using local SQLite database
+- **Full-text reuse**: `--prefer-zotero-fulltext` speeds up imports by 50-80% for documents Zotero has indexed
+- **Annotation indexing**: `--include-annotations` indexes PDF highlights and comments as separate searchable points
+- **Source routing**: Choose between local database and Web API with `--mode` option (local-first, web-first, auto)
 
 ### Use Case 3: Selective Import with Tag Filtering
 
@@ -436,37 +450,129 @@ This allows per-session overrides: you can set `QDRANT_API_KEY` in your shell to
 
 ### Zotero Configuration
 
-CiteLoom integrates with Zotero via the pyzotero API for citation metadata resolution. Configure Zotero using environment variables:
+CiteLoom integrates with Zotero in two ways:
+1. **Local Database Access**: Fast, offline access via SQLite (auto-detected)
+2. **Web API**: Remote access via Zotero REST API (requires API key)
 
-#### Remote Zotero Access
+#### Configuration in `citeloom.toml`
 
-For remote Zotero access (synced library):
+```toml
+[zotero]
+# Source selection strategy: "local-first", "web-first", "auto", "local-only", "web-only"
+mode = "web-first"  # Default: backward compatible
+
+# Optional: Override auto-detected paths
+# db_path = "/path/to/zotero.sqlite"
+# storage_dir = "/path/to/storage"
+
+# Feature flags
+include_annotations = false  # Index PDF annotations (opt-in)
+prefer_zotero_fulltext = true  # Reuse Zotero fulltext (50-80% speedup)
+
+[zotero.web]
+# Web API credentials (for remote access)
+library_id = ""
+api_key = ""
+
+[zotero.fulltext]
+min_length = 100  # Minimum text length for quality validation
+```
+
+#### Environment Variables
 
 ```bash
+# Web API credentials (for remote access)
 ZOTERO_LIBRARY_ID=your-library-id
 ZOTERO_LIBRARY_TYPE=user  # or 'group' for group libraries
 ZOTERO_API_KEY=your-api-key
+
+# Local database access (auto-detected, no config needed)
+# ZOTERO_LOCAL=true  # Optional flag
+
+# Feature flags
+ZOTERO_INCLUDE_ANNOTATIONS=false  # Index annotations
+ZOTERO_PREFER_FULLTEXT=true  # Reuse fulltext
 ```
 
-**Getting your Zotero API key:**
+#### Getting Your Zotero API Key
+
 1. Go to [Zotero Settings → Feeds/API](https://www.zotero.org/settings/keys)
 2. Create a new API key with library access permissions
 3. Copy the API key and your user/library ID
 
-**Getting your Library ID:**
+**Library ID Discovery**:
 - User library: Your user ID is shown on the [Zotero Settings page](https://www.zotero.org/settings/keys)
 - Group library: Found in the group's URL: `https://www.zotero.org/groups/{library_id}`
 
-#### Local Zotero Access
+#### Source Selection Strategies
 
-For local Zotero access (requires Zotero desktop app running):
+Control how CiteLoom selects between local database and Web API:
+
+- **`local-first`**: Try local database first, fallback to Web API per-file
+- **`web-first`**: Use Web API primarily, fallback to local on rate limits (default, backward compatible)
+- **`auto`**: Intelligent selection based on availability and speed
+- **`local-only`**: Strict local-only mode (no fallback)
+- **`web-only`**: Web API only (backward compatible)
+
+#### Local Database Access
+
+CiteLoom automatically detects your Zotero profile on:
+- **Windows**: `%APPDATA%\Zotero\Profiles\<profile>\zotero\zotero.sqlite`
+- **macOS**: `~/Library/Application Support/Zotero/Profiles/<profile>/zotero/zotero.sqlite`
+- **Linux**: `~/.zotero/zotero/Profiles/<profile>/zotero/zotero.sqlite`
+
+Uses **immutable read-only mode** - safe to use while Zotero is running.
+
+#### Offline Browsing Commands
+
+All `zotero` commands work offline using local database:
 
 ```bash
-ZOTERO_LIBRARY_ID=1  # Typically '1' for user library in local mode
-ZOTERO_LOCAL=true
+# List all collections with hierarchy and item counts
+citeloom zotero list-collections
+
+# Browse items in a collection
+citeloom zotero browse-collection "Collection Name" --limit 20
+
+# List all tags with usage counts
+citeloom zotero list-tags
+
+# View most recently added items
+citeloom zotero recent-items --limit 10
 ```
 
-**Note**: Local access requires Zotero desktop app to be running with the local API enabled. This is useful for development or when you prefer not to use the remote API.
+See [Zotero Local Access Guide](docs/zotero-local-access.md) for detailed documentation.
+
+#### Full-Text Reuse
+
+Reuse text that Zotero has already extracted to speed up imports by 50-80%:
+
+- **Enabled by default**: `prefer_zotero_fulltext = true`
+- **Automatic fallback**: Falls back to Docling conversion when fulltext unavailable
+- **Quality validation**: Validates fulltext quality before reuse
+- **Page-level mixed provenance**: Supports mixing Zotero fulltext and Docling pages
+
+See [Full-Text Reuse Guide](docs/zotero-fulltext-reuse.md) for details.
+
+#### Annotation Indexing
+
+Index PDF annotations (highlights, comments) as separate searchable points:
+
+- **Opt-in**: Disabled by default (`include_annotations = false`)
+- **Separate points**: Each annotation creates a separate vector point with `type:annotation` tag
+- **Graceful handling**: Retries with exponential backoff, skips on failure without blocking imports
+
+See [Annotation Indexing Guide](docs/zotero-annotations.md) for details.
+
+#### Embedding Model Governance
+
+CiteLoom enforces embedding model consistency within collections:
+- **Bound model**: Each collection is bound to a specific embedding model at creation
+- **Write guards**: Prevent accidentally mixing incompatible embeddings
+- **Friendly errors**: Clear guidance when model mismatches occur
+- **Migration support**: Use `--force-rebuild` flag to intentionally migrate to a new model
+
+See [Embedding Governance Guide](docs/embedding-governance.md) for details.
 
 ### Optional vs Required Keys
 

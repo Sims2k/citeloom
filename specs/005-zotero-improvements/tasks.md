@@ -251,18 +251,18 @@
 
 ### Configuration
 
-- [ ] T103 [P] Add Zotero configuration section to Settings with mode, db_path, storage_dir, include_annotations, prefer_zotero_fulltext in src/infrastructure/config/settings.py
-- [ ] T104 [P] Add zotero.web configuration subsection with library_id and api_key in src/infrastructure/config/settings.py
-- [ ] T105 [P] Add zotero.fulltext configuration subsection with min_length threshold in src/infrastructure/config/settings.py
-- [ ] T106 [P] Update citeloom.toml example configuration with complete Zotero section including all FR-037 options: mode (default web-first), db_path (optional override), storage_dir (optional), include_annotations (default false), prefer_zotero_fulltext (default true), and zotero.web subsection with library_id and api_key
+- [X] T103 [P] Add Zotero configuration section to Settings with mode, db_path, storage_dir, include_annotations, prefer_zotero_fulltext in src/infrastructure/config/settings.py
+- [X] T104 [P] Add zotero.web configuration subsection with library_id and api_key in src/infrastructure/config/settings.py
+- [X] T105 [P] Add zotero.fulltext configuration subsection with min_length threshold in src/infrastructure/config/settings.py
+- [X] T106 [P] Update citeloom.toml example configuration with complete Zotero section including all FR-037 options: mode (default web-first), db_path (optional override), storage_dir (optional), include_annotations (default false), prefer_zotero_fulltext (default true), and zotero.web subsection with library_id and api_key
 
 ### Documentation
 
-- [ ] T107 [P] Create platform-specific Zotero profile paths guide in docs/zotero-local-access.md
-- [ ] T108 [P] Create annotation indexing guide in docs/zotero-annotations.md
-- [ ] T109 [P] Create full-text reuse policy explanation in docs/zotero-fulltext-reuse.md
-- [ ] T110 [P] Create embedding model governance guide in docs/embedding-governance.md
-- [ ] T111 [P] Update README.md with new Zotero features and configuration options
+- [X] T107 [P] Create platform-specific Zotero profile paths guide in docs/zotero-local-access.md
+- [X] T108 [P] Create annotation indexing guide in docs/zotero-annotations.md
+- [X] T109 [P] Create full-text reuse policy explanation in docs/zotero-fulltext-reuse.md
+- [X] T110 [P] Create embedding model governance guide in docs/embedding-governance.md
+- [X] T111 [P] Update README.md with new Zotero features and configuration options
 
 ### Testing
 

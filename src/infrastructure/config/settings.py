@@ -66,6 +66,27 @@ class ZoteroWebSettings(BaseModel):
     
     library_id: str = ""
     api_key: str = ""
+    
+    def __init__(self, **data: Any) -> None:
+        """Initialize with environment variable precedence."""
+        # Ensure environment is loaded
+        load_environment_variables()
+        
+        # Override with environment variables if present (system env > .env > defaults)
+        # Environment variables take precedence over TOML values
+        env_library_id = get_env("ZOTERO_LIBRARY_ID")
+        if env_library_id is not None:
+            data["library_id"] = env_library_id
+        elif "library_id" not in data:
+            data["library_id"] = ""
+        
+        env_api_key = get_env("ZOTERO_API_KEY")
+        if env_api_key is not None:
+            data["api_key"] = env_api_key
+        elif "api_key" not in data:
+            data["api_key"] = ""
+        
+        super().__init__(**data)
 
 
 class ZoteroSettings(BaseModel):
