@@ -142,8 +142,8 @@
 - [X] T041 [US4] Update `ingest run` command to use `get_converter()` factory instead of direct instantiation in `src/infrastructure/cli/commands/ingest.py`
 - [X] T042 [US4] Update MCP tools to use `get_converter()` factory in `src/infrastructure/mcp/tools.py` (if applicable)
 - [X] T043 [US4] Verify process-scoped lifetime (no inactivity-based cleanup, only process termination)
-- [ ] T044a [US4] [P] [FR-017] Implement module-level cache `_embedding_model_cache` dictionary in `src/infrastructure/adapters/fastembed_embeddings.py`
-- [ ] T044b [US4] [FR-017] Implement `get_embedding_model()` factory function returning cached instance in `src/infrastructure/adapters/fastembed_embeddings.py` (Note: Can be deferred if embedding model reuse is not critical for MVP)
+- [X] T044a [US4] [P] [FR-017] Implement module-level cache `_embedding_model_cache` dictionary in `src/infrastructure/adapters/fastembed_embeddings.py`
+- [X] T044b [US4] [FR-017] Implement `get_embedding_model()` factory function returning cached instance in `src/infrastructure/adapters/fastembed_embeddings.py` (Note: Can be deferred if embedding model reuse is not critical for MVP)
 
 **Checkpoint**: User Story 4 complete - second and subsequent commands reuse converter instance, eliminating 2-3s overhead
 
@@ -159,10 +159,10 @@
 
 ### Implementation for User Story 5
 
-- [ ] T044 [US5] Add automatic model binding to collection during ingestion in `src/infrastructure/adapters/qdrant_index.py`
-- [ ] T046 [US5] Verify model binding after ingestion completes successfully in `src/infrastructure/adapters/qdrant_index.py`
-- [ ] T047 [US5] Improve error message when query fails due to model binding in `src/infrastructure/cli/commands/query.py`
-- [ ] T048a [US5] Add actionable guidance in model binding error messages (how to resolve issue)
+- [X] T044 [US5] Add automatic model binding to collection during ingestion in `src/infrastructure/adapters/qdrant_index.py`
+- [X] T046 [US5] Verify model binding after ingestion completes successfully in `src/infrastructure/adapters/qdrant_index.py`
+- [X] T047 [US5] Improve error message when query fails due to model binding in `src/infrastructure/cli/commands/query.py`
+- [X] T048a [US5] Add actionable guidance in model binding error messages (how to resolve issue)
 
 **Checkpoint**: User Story 5 complete - queries succeed immediately after document ingestion without manual model binding
 

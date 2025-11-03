@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import logging
 from typing import Sequence
 
 try:
     from fastembed import TextEmbedding
 except Exception:  # pragma: no cover
     TextEmbedding = None  # type: ignore
+
+logger = logging.getLogger(__name__)
+
+# Module-level cache for process-scoped embedding model instances (T044a)
+_embedding_model_cache: dict[str, "FastEmbedAdapter"] = {}
 
 
 class FastEmbedAdapter:
@@ -103,3 +109,43 @@ class FastEmbedAdapter:
         except Exception as e:
             # Fallback on error
             return [[0.0] * 384 for _ in texts]
+
+
+def get_embedding_model(model_id: str = "sentence-transformers/all-MiniLM-L6-v2", config_hash: str | None = None) -> FastEmbedAdapter:
+    """
+    Get or create shared FastEmbedAdapter instance (process-scoped).
+    
+    This factory function implements a singleton pattern with module-level cache
+    to avoid reinitialization overhead on subsequent commands in the same process.
+    
+    Args:
+        model_id: Embedding model identifier (e.g., "sentence-transformers/all-MiniLM-L6-v2")
+        config_hash: Optional configuration hash for variant instances
+            (default: None for single instance per model)
+    
+    Returns:
+        FastEmbedAdapter instance (shared across process lifetime for same model_id)
+    
+    Behavior:
+        - First call for a model_id: Creates new FastEmbedAdapter, caches it, returns instance
+        - Subsequent calls with same model_id: Returns cached instance (no reinitialization overhead)
+        - Cache key: f"embedding_model:{model_id}:{config_hash or 'default'}"
+        - Lifetime: Process-scoped (cleared only on process termination)
+    
+    Thread Safety:
+        - Module-level cache is safe for single-user CLI (no concurrent access expected)
+        - No locking required for single-threaded CLI operations
+    
+    Note:
+        Can be deferred if embedding model reuse is not critical for MVP, but recommended
+        for performance optimization when multiple commands use same embedding model.
+    """
+    cache_key = f"embedding_model:{model_id}:{config_hash or 'default'}"
+    
+    if cache_key not in _embedding_model_cache:
+        logger.debug(f"Creating new embedding model instance (cache_key={cache_key}, model_id={model_id})")
+        _embedding_model_cache[cache_key] = FastEmbedAdapter(default_model=model_id)
+    else:
+        logger.debug(f"Reusing cached embedding model instance (cache_key={cache_key}, model_id={model_id})")
+    
+    return _embedding_model_cache[cache_key]

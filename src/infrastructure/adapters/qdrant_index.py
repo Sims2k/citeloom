@@ -271,6 +271,37 @@ class QdrantIndexAdapter:
                             "provided_sparse_model": sparse_model_id,
                         },
                     )
+                
+                # T044: Ensure model binding for existing collections (automatic binding during ingestion)
+                # This ensures queries work immediately after ingestion without manual binding steps
+                if self._client is not None:
+                    try:
+                        # Bind dense model if not already bound (idempotent - safe to call multiple times)
+                        self._client.set_model(collection_name=collection_name, model_name=dense_model_id)
+                        logger.debug(
+                            f"Ensured dense model '{dense_model_id}' is bound to collection '{collection_name}'",
+                            extra={"collection_name": collection_name, "model_id": dense_model_id},
+                        )
+                    except Exception as e:
+                        # Log warning but don't fail - binding may already be set or may fail for other reasons
+                        logger.debug(
+                            f"Model binding check/set for '{dense_model_id}' on '{collection_name}': {e}",
+                            extra={"collection_name": collection_name, "model_id": dense_model_id},
+                        )
+                    
+                    # Bind sparse model if provided
+                    if sparse_model_id is not None:
+                        try:
+                            self._client.set_sparse_model(collection_name=collection_name, model_name=sparse_model_id)
+                            logger.debug(
+                                f"Ensured sparse model '{sparse_model_id}' is bound to collection '{collection_name}'",
+                                extra={"collection_name": collection_name, "sparse_model_id": sparse_model_id},
+                            )
+                        except Exception as e:
+                            logger.debug(
+                                f"Sparse model binding check/set for '{sparse_model_id}' on '{collection_name}': {e}",
+                                extra={"collection_name": collection_name, "sparse_model_id": sparse_model_id},
+                            )
         except EmbeddingModelMismatch:
             raise
         except Exception as e:
@@ -625,6 +656,51 @@ class QdrantIndexAdapter:
                     f"Upserted {len(points)} chunks to Qdrant collection '{collection_name}'",
                     extra={"collection_name": collection_name, "chunk_count": len(points)},
                 )
+                
+                # T046: Verify model binding after ingestion completes successfully
+                # This ensures queries work immediately after ingestion
+                try:
+                    dense_bound, sparse_bound = self._check_model_bindings(collection_name)
+                    if not dense_bound:
+                        # Try to bind again (may have failed silently earlier)
+                        try:
+                            self._client.set_model(collection_name=collection_name, model_name=model_id)
+                            logger.info(
+                                f"Verified and ensured dense model '{model_id}' binding after ingestion",
+                                extra={"collection_name": collection_name, "model_id": model_id},
+                            )
+                        except Exception as bind_error:
+                            logger.warning(
+                                f"Could not verify/ensure dense model binding after ingestion: {bind_error}. "
+                                "Queries may fail until model is manually bound.",
+                                extra={"collection_name": collection_name, "model_id": model_id},
+                            )
+                    else:
+                        logger.debug(
+                            f"Verified dense model binding after ingestion (model='{model_id}')",
+                            extra={"collection_name": collection_name, "model_id": model_id},
+                        )
+                    
+                    if sparse_model_id is not None and not sparse_bound:
+                        try:
+                            self._client.set_sparse_model(collection_name=collection_name, model_name=sparse_model_id)
+                            logger.info(
+                                f"Verified and ensured sparse model '{sparse_model_id}' binding after ingestion",
+                                extra={"collection_name": collection_name, "sparse_model_id": sparse_model_id},
+                            )
+                        except Exception as bind_error:
+                            logger.warning(
+                                f"Could not verify/ensure sparse model binding after ingestion: {bind_error}",
+                                extra={"collection_name": collection_name, "sparse_model_id": sparse_model_id},
+                            )
+                except Exception as verify_error:
+                    # Don't fail ingestion if verification fails - log warning
+                    logger.warning(
+                        f"Model binding verification failed after ingestion: {verify_error}. "
+                        "Ingestion succeeded, but queries may require manual model binding.",
+                        extra={"collection_name": collection_name, "model_id": model_id},
+                    )
+                
                 return  # Success
             except Exception as e:
                 last_error = e
