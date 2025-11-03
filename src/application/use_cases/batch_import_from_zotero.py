@@ -633,10 +633,12 @@ def batch_import_from_zotero(
                             exc_info=True,
                         )
                     
+                    # T063: Use resolved downloaded_path (accounts for duplicate filename handling with _1, _2 suffixes)
+                    # downloaded_path is the actual path after duplicate handling (lines 576-582)
                     manifest_attachment = DownloadManifestAttachment(
                         attachment_key=attachment_key,
-                        filename=filename,
-                        local_path=downloaded_path.resolve(),  # Ensure absolute path
+                        filename=downloaded_path.name,  # Use actual filename (may have _1, _2 suffix)
+                        local_path=downloaded_path.resolve(),  # Ensure absolute path with resolved duplicate suffix
                         download_status="success",
                         file_size=file_size,
                         content_fingerprint=content_fingerprint,

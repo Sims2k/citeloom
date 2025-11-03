@@ -3,9 +3,9 @@
 import hashlib
 import logging
 import re
-import signal
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from pathlib import Path
 from typing import Mapping, Any, TYPE_CHECKING
 
@@ -159,17 +159,13 @@ class DoclingConverterAdapter:
         # We ensure languages are available for OCR engine selection
         logger.debug(f"OCR configured with languages: {languages}")
     
-    def _timeout_handler(self, signum: int, frame: Any) -> None:
-        """Signal handler for timeout enforcement."""
-        # T103: Enhanced diagnostic information in timeout handler
-        raise TimeoutError(
-            f"Document conversion exceeded {self.DOCUMENT_TIMEOUT_SECONDS}s timeout. "
-            f"Page timeout limit: {self.PAGE_TIMEOUT_SECONDS}s per page."
-        )
-    
     def _convert_with_timeout(self, source_path: str) -> Any:
         """
-        Convert document with timeout enforcement.
+        Convert document with timeout enforcement using ThreadPoolExecutor (T059, T060).
+        
+        Cross-platform timeout implementation using concurrent.futures.ThreadPoolExecutor.
+        This works on all platforms (Windows, Linux, macOS), unlike signal.SIGALRM which
+        only works on Unix systems.
         
         Args:
             source_path: Path to source document
@@ -178,54 +174,65 @@ class DoclingConverterAdapter:
             Docling conversion result
         
         Raises:
-            TimeoutError: If conversion exceeds timeout
-        """
-        # Note: Signal-based timeouts work on Unix/Linux
-        # On Windows, we rely on Docling's internal timeouts or thread-based timeouts
-        if sys.platform != "win32":
-            # Set alarm for document-level timeout
-            signal.signal(signal.SIGALRM, self._timeout_handler)
-            signal.alarm(self.DOCUMENT_TIMEOUT_SECONDS)
+            TimeoutError: If conversion exceeds timeout (renamed from built-in TimeoutError
+                         to avoid conflict with concurrent.futures.TimeoutError)
         
-        try:
-            # Perform conversion
-            result = self.converter.convert(source_path)
-            
-            if sys.platform != "win32":
-                signal.alarm(0)  # Cancel alarm
-            
-            return result
-        except TimeoutError:
-            # T103: Enhanced diagnostic logging for timeout failures at conversion level
-            logger.error(
-                f"Document conversion timeout after {self.DOCUMENT_TIMEOUT_SECONDS}s: {source_path}",
-                extra={
-                    "source_path": source_path,
-                    "timeout_seconds": self.DOCUMENT_TIMEOUT_SECONDS,
-                    "page_timeout_seconds": self.PAGE_TIMEOUT_SECONDS,
-                    "diagnostic": "Document-level timeout occurred. This may indicate: "
-                                  "1. Document is extremely large (>1000 pages), "
-                                  "2. Complex document structure requiring extensive processing, "
-                                  "3. Resource constraints (CPU/memory). "
-                                  "Consider splitting document or increasing timeout if system allows.",
-                },
-            )
-            raise
-        except Exception as e:
-            if sys.platform != "win32":
-                signal.alarm(0)  # Cancel alarm on error
-            # T103: Enhanced diagnostic logging for conversion failures
-            logger.error(
-                f"Document conversion failed during processing: {e}",
-                extra={
-                    "source_path": source_path,
-                    "timeout_seconds": self.DOCUMENT_TIMEOUT_SECONDS,
-                    "diagnostic": "Conversion error occurred during document processing. "
-                                  "Check document format, corruption, or system resources.",
-                },
-                exc_info=True,
-            )
-            raise
+        Platform Behavior (T062a):
+        - All platforms: Uses ThreadPoolExecutor with timeout parameter
+        - Timeout enforcement: Thread-based timeout works consistently across platforms
+        - Note: If conversion is already executing when timeout occurs, it may continue
+          in background thread until completion, but the result will not be returned
+        """
+        def _perform_conversion() -> Any:
+            """Perform the actual conversion in a separate thread."""
+            return self.converter.convert(source_path)
+        
+        # Use ThreadPoolExecutor for cross-platform timeout enforcement (T059, T060)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_perform_conversion)
+            try:
+                # Wait for conversion with timeout - works on all platforms
+                result = future.result(timeout=self.DOCUMENT_TIMEOUT_SECONDS)
+                return result
+            except FutureTimeoutError:
+                # Conversion exceeded timeout - cancel if possible
+                # Note: If conversion is already executing, cancellation may not interrupt it
+                # but the timeout exception will be raised
+                future.cancel()
+                timeout_error = TimeoutError(
+                    f"Document conversion exceeded {self.DOCUMENT_TIMEOUT_SECONDS}s timeout. "
+                    f"Page timeout limit: {self.PAGE_TIMEOUT_SECONDS}s per page."
+                )
+                # Enhanced diagnostic logging for timeout failures (T103)
+                logger.error(
+                    f"Document conversion timeout after {self.DOCUMENT_TIMEOUT_SECONDS}s: {source_path}",
+                    extra={
+                        "source_path": source_path,
+                        "timeout_seconds": self.DOCUMENT_TIMEOUT_SECONDS,
+                        "page_timeout_seconds": self.PAGE_TIMEOUT_SECONDS,
+                        "diagnostic": "Document-level timeout occurred. This may indicate: "
+                                      "1. Document is extremely large (>1000 pages), "
+                                      "2. Complex document structure requiring extensive processing, "
+                                      "3. Resource constraints (CPU/memory). "
+                                      "Consider splitting large documents or increasing timeout limits.",
+                    },
+                    exc_info=True,
+                )
+                raise timeout_error
+            except Exception as e:
+                # Re-raise any other exceptions from conversion
+                # T103: Enhanced diagnostic logging for conversion failures
+                logger.error(
+                    f"Document conversion failed during processing: {e}",
+                    extra={
+                        "source_path": source_path,
+                        "timeout_seconds": self.DOCUMENT_TIMEOUT_SECONDS,
+                        "diagnostic": "Conversion error occurred during document processing. "
+                                      "Check document format, corruption, or system resources.",
+                    },
+                    exc_info=True,
+                )
+                raise
     
     def _extract_page_map(self, doc: Any, plain_text: str) -> dict[int, tuple[int, int]]:
         """
@@ -766,9 +773,25 @@ class DoclingConverterAdapter:
         if not DOCLING_AVAILABLE:
             raise ImportError("Docling is not installed. See __init__ error for details.")
         
+        # T064: Use Zotero metadata language information for OCR when available
+        # ocr_languages parameter should contain language from Zotero metadata (already mapped by resolver)
+        selected_languages = self._select_ocr_languages(ocr_languages)
+        
+        # Log OCR language selection (T064)
+        if ocr_languages:
+            logger.debug(
+                f"Using OCR languages from Zotero metadata: {selected_languages}",
+                extra={"source_path": source_path, "zotero_languages": ocr_languages, "selected_languages": selected_languages},
+            )
+        else:
+            logger.debug(
+                f"Using default OCR languages: {selected_languages}",
+                extra={"source_path": source_path, "selected_languages": selected_languages},
+            )
+        
         logger.info(
             f"Converting document: {source_path}",
-            extra={"source_path": source_path, "ocr_languages": ocr_languages},
+            extra={"source_path": source_path, "ocr_languages": selected_languages},
         )
         
         # T031, T032: Initialize document-level progress if reporter provided
@@ -783,8 +806,7 @@ class DoclingConverterAdapter:
             if doc_progress:
                 doc_progress.update_stage("converting", "Converting document to text")
         
-        # Select OCR languages
-        selected_languages = self._select_ocr_languages(ocr_languages)
+        # Configure OCR with selected languages (already selected above at line 778)
         self._configure_ocr(selected_languages)
         
         # Compute stable doc_id

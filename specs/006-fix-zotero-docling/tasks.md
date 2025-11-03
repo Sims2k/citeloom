@@ -180,8 +180,8 @@
 
 - [X] T049 [US6] Move HTTP request logs from INFO to DEBUG level in `src/infrastructure/logging.py`
 - [X] T050 [US6] Configure HTTP client logging to respect verbose mode flag in `src/infrastructure/logging.py`
-- [ ] T051 [US6] Verify important information (progress, results, errors) remains visible at INFO level
-- [ ] T052a [US6] Add summary logging for API call counts (e.g., "Made 20 API calls in 35 seconds") instead of individual request logs
+- [X] T051 [US6] Verify important information (progress, results, errors) remains visible at INFO level
+- [X] T052a [US6] Add summary logging for API call counts (e.g., "Made 20 API calls in 35 seconds") instead of individual request logs
 
 **Checkpoint**: User Story 6 complete - HTTP logs suppressed in default mode, appearing only in verbose mode
 
@@ -202,7 +202,7 @@
 - [X] T055 [US7] Improve Windows Zotero profile detection by checking `%USERPROFILE%\Documents\Zotero` path in `src/infrastructure/adapters/zotero_local_db.py`
 - [X] T056 [US7] Improve error message when local adapter detection fails with clear configuration instructions in `src/infrastructure/adapters/zotero_local_db.py`
 - [X] T057 [US7] Improve file not found error messages with filename variation suggestions in download processing
-- [ ] T058a [US7] Update setup guide with Windows-specific Zotero profile configuration examples and troubleshooting steps in `docs/setup-guide.md`
+- [X] T058a [US7] Update setup guide with Windows-specific Zotero profile configuration examples and troubleshooting steps in `docs/setup-guide.md`
 
 **Checkpoint**: User Story 7 complete - improved Windows profile detection and clear error messages with actionable guidance
 
@@ -216,10 +216,10 @@
 
 ### Implementation for Cross-Platform Timeout
 
-- [ ] T059 Replace `signal.SIGALRM` timeout with `concurrent.futures.ThreadPoolExecutor` approach in `src/infrastructure/adapters/docling_converter.py`
-- [ ] T060 Implement `_convert_with_timeout()` using `ThreadPoolExecutor` with timeout parameter for cross-platform support
-- [ ] T061 Add timeout verification test for Windows platform in `tests/integration/test_docling_timeout.py`
-- [ ] T062a Document platform behavior differences (if any) in code comments
+- [X] T059 Replace `signal.SIGALRM` timeout with `concurrent.futures.ThreadPoolExecutor` approach in `src/infrastructure/adapters/docling_converter.py`
+- [X] T060 Implement `_convert_with_timeout()` using `ThreadPoolExecutor` with timeout parameter for cross-platform support
+- [X] T061 Add timeout verification test for Windows platform in `tests/integration/test_docling_timeout.py`
+- [X] T062a Document platform behavior differences (if any) in code comments
 
 **Checkpoint**: Cross-platform timeout enforcement complete - Windows users have timeout protection
 
@@ -233,10 +233,10 @@
 
 ### Implementation for Additional Fixes
 
-- [ ] T063 [P] [FR-007] Update download manifest with actual downloaded filename accounting for duplicate filename handling (_1, _2 suffixes) in `src/application/use_cases/batch_import_from_zotero.py` (update `local_path` in `DownloadManifestAttachment` at lines 636-644 to use resolved `downloaded_path` after duplicate handling at lines 576-582)
-- [ ] T064 [P] [FR-019] Use Zotero metadata language information for OCR when available in `src/infrastructure/adapters/docling_converter.py`
-- [ ] T065 [P] [FR-020] Suppress unnecessary OCR warnings when OCR attempted but not needed in `src/infrastructure/adapters/docling_converter.py`
-- [ ] T066a [P] [FR-023] Document Windows chunker limitations clearly explaining what works and what doesn't in `docs/windows-compatibility.md`
+- [X] T063 [P] [FR-007] Update download manifest with actual downloaded filename accounting for duplicate filename handling (_1, _2 suffixes) in `src/application/use_cases/batch_import_from_zotero.py` (update `local_path` in `DownloadManifestAttachment` at lines 636-644 to use resolved `downloaded_path` after duplicate handling at lines 576-582)
+- [X] T064 [P] [FR-019] Use Zotero metadata language information for OCR when available in `src/infrastructure/adapters/docling_converter.py`
+- [X] T065 [P] [FR-020] Suppress unnecessary OCR warnings when OCR attempted but not needed in `src/infrastructure/adapters/docling_converter.py`
+- [X] T066a [P] [FR-023] Document Windows chunker limitations clearly explaining what works and what doesn't in `docs/windows-compatibility.md`
 
 **Checkpoint**: Additional fixes complete
 

@@ -99,6 +99,10 @@ def list_collections(
     """
     adapter = _get_zotero_adapter()
     
+    # T052a: Reset API call tracking at start of command
+    if isinstance(adapter, ZoteroImporterAdapter):
+        adapter.reset_api_call_tracking()
+    
     try:
         collections = adapter.list_collections()
         
@@ -200,13 +204,23 @@ def list_collections(
         
         console.print(table)
         
+        # T052a: Log API call summary at end of successful command
+        if isinstance(adapter, ZoteroImporterAdapter):
+            adapter.log_api_call_summary()
+        
     except ZoteroAPIError as e:
         console.print(f"[red]Zotero API error: {e.message}[/red]")
         if e.details:
             console.print(f"[yellow]Details: {e.details}[/yellow]")
+        # T052a: Log API call summary even on error
+        if isinstance(adapter, ZoteroImporterAdapter):
+            adapter.log_api_call_summary()
         raise typer.Exit(code=1)
     except Exception as e:
         console.print(f"[red]Failed to list collections: {e}[/red]")
+        # T052a: Log API call summary even on error
+        if isinstance(adapter, ZoteroImporterAdapter):
+            adapter.log_api_call_summary()
         raise typer.Exit(code=1)
 
 
@@ -224,6 +238,10 @@ def browse_collection(
         citeloom zotero browse-collection -c ABC12345 --subcollections --limit 50
     """
     adapter = _get_zotero_adapter()
+    
+    # T052a: Reset API call tracking at start of command
+    if isinstance(adapter, ZoteroImporterAdapter):
+        adapter.reset_api_call_tracking()
     
     try:
         # T033: Track operation start time for progress indication
@@ -425,19 +443,32 @@ def browse_collection(
             operation_duration = time.time() - operation_start_time
             console.print(f"[green]Completed in {operation_duration:.1f}s[/green]")
         
+        # T052a: Log API call summary if using web adapter
+        if isinstance(adapter, ZoteroImporterAdapter):
+            adapter.log_api_call_summary()
+        
     except ZoteroConnectionError as e:
         console.print(f"[red]Zotero connection error: {e.message}[/red]")
         if e.details and e.details.get("reason"):
             console.print(f"[yellow]Reason: {e.details.get('reason')}[/yellow]")
         console.print("[yellow]Please verify Zotero configuration and connectivity[/yellow]")
+        # T052a: Log API call summary even on error
+        if isinstance(adapter, ZoteroImporterAdapter):
+            adapter.log_api_call_summary()
         raise typer.Exit(code=1)
     except ZoteroAPIError as e:
         console.print(f"[red]Zotero API error: {e.message}[/red]")
         if e.details:
             console.print(f"[yellow]Details: {e.details}[/yellow]")
+        # T052a: Log API call summary even on error
+        if isinstance(adapter, ZoteroImporterAdapter):
+            adapter.log_api_call_summary()
         raise typer.Exit(code=1)
     except Exception as e:
         console.print(f"[red]Failed to browse collection: {e}[/red]")
+        # T052a: Log API call summary even on error
+        if isinstance(adapter, ZoteroImporterAdapter):
+            adapter.log_api_call_summary()
         raise typer.Exit(code=1)
 
 

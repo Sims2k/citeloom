@@ -108,9 +108,20 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
 
         # Rate limiting state
         self._last_request_time = 0.0
+        
+        # API call tracking for summary logging (T052a)
+        self._api_call_count = 0
+        self._api_call_start_time: float | None = None
 
     def _rate_limit(self) -> None:
         """Apply rate limiting for web API requests (0.5s minimum interval)."""
+        # Track API call start time for summary logging (T052a)
+        if self._api_call_start_time is None:
+            self._api_call_start_time = time.time()
+        
+        # Increment API call counter (T052a)
+        self._api_call_count += 1
+        
         if self.local:
             return  # No rate limiting for local API
 
@@ -708,6 +719,43 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
                     details={"collection_name_or_key": collection_name_or_key},
                 )
 
+    def get_api_call_summary(self) -> dict[str, Any] | None:
+        """
+        Get summary of API calls made since tracking started.
+        
+        Returns:
+            Dict with 'count' and 'duration_seconds', or None if no calls made
+        """
+        if self._api_call_count == 0 or self._api_call_start_time is None:
+            return None
+        
+        duration = time.time() - self._api_call_start_time
+        return {
+            "count": self._api_call_count,
+            "duration_seconds": duration,
+        }
+    
+    def reset_api_call_tracking(self) -> None:
+        """Reset API call tracking counters."""
+        self._api_call_count = 0
+        self._api_call_start_time = None
+    
+    def log_api_call_summary(self) -> None:
+        """
+        Log summary of API calls made (T052a).
+        
+        Logs at INFO level with format: "Made N API calls in X seconds"
+        """
+        summary = self.get_api_call_summary()
+        if summary:
+            logger.info(
+                f"Made {summary['count']} API call(s) in {summary['duration_seconds']:.1f} seconds",
+                extra={
+                    "api_call_count": summary["count"],
+                    "duration_seconds": summary["duration_seconds"],
+                },
+            )
+    
     def find_collection_by_name(self, collection_name: str) -> dict[str, Any] | None:
         """
         Find collection by name (case-insensitive partial match).
