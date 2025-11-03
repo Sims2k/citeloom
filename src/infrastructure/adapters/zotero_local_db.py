@@ -51,10 +51,31 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
         if db_path is None:
             profile_dir = self._detect_zotero_profile()
             if profile_dir is None:
+                # Provide detailed guidance for Windows users
+                system = platform.system()
+                if system == "Windows":
+                    hint = (
+                        "Zotero profile directory not found. Please check:\n"
+                        "1. Zotero is installed and has been run at least once\n"
+                        "2. Profile location is one of:\n"
+                        "   - %APPDATA%\\Zotero\\Profiles\\{profile_id}\\zotero.sqlite\n"
+                        "   - %LOCALAPPDATA%\\Zotero\\Profiles\\{profile_id}\\zotero.sqlite\n"
+                        "   - %USERPROFILE%\\Documents\\Zotero\\Profiles\\{profile_id}\\zotero.sqlite\n"
+                        "3. To manually configure, set 'db_path' in citeloom.toml:\n"
+                        "   [zotero]\n"
+                        "   db_path = \"C:\\Users\\YourName\\AppData\\Roaming\\Zotero\\Profiles\\xxxxx.default\\zotero.sqlite\"\n"
+                        "   storage_dir = \"C:\\Users\\YourName\\AppData\\Roaming\\Zotero\\Profiles\\xxxxx.default\\zotero\\storage\"\n"
+                        "See docs/zotero-local-access.md for more details."
+                    )
+                else:
+                    hint = (
+                        "Zotero profile directory not found. Ensure Zotero is installed and has been run at least once. "
+                        "Or provide db_path explicitly via configuration. "
+                        "See docs/zotero-local-access.md for more details."
+                    )
                 raise ZoteroProfileNotFoundError(
                     "Zotero profile directory",
-                    hint="Ensure Zotero is installed and has been run at least once. "
-                    "Or provide db_path explicitly via configuration.",
+                    hint=hint,
                 )
             db_path = profile_dir / "zotero.sqlite"
             # Storage directory is typically alongside the profile
@@ -74,10 +95,18 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
         
         # Validate database exists
         if not self._db_path.exists():
+            hint = (
+                f"Database file not found at: {self._db_path}\n"
+                "Ensure:\n"
+                "1. Zotero is installed and has been run at least once\n"
+                "2. The database path is correct\n"
+                "3. Zotero is not currently performing intensive operations\n"
+                "To manually configure, set 'db_path' in citeloom.toml. "
+                "See docs/zotero-local-access.md for configuration examples."
+            )
             raise ZoteroDatabaseNotFoundError(
                 str(self._db_path),
-                hint="Ensure Zotero is installed and has been run at least once. "
-                "Database file should be at: zotero.sqlite in profile directory.",
+                hint=hint,
             )
         
         # Open database in immutable read-only mode
@@ -92,18 +121,38 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
             Path to profile directory, or None if not found
         
         Platform paths:
-        - Windows: %APPDATA%\\Zotero\\Profiles\\{profile_id}\\
+        - Windows: Checks multiple common paths:
+            1. %APPDATA%\\Zotero\\Profiles\\{profile_id}\\
+            2. %LOCALAPPDATA%\\Zotero\\Profiles\\{profile_id}\\
+            3. %USERPROFILE%\\Documents\\Zotero\\Profiles\\{profile_id}\\
         - macOS: ~/Library/Application Support/Zotero/Profiles/{profile_id}/
         - Linux: ~/.zotero/zotero/Profiles/{profile_id}/
         """
         system = platform.system()
         
         if system == "Windows":
-            appdata = os.environ.get("APPDATA", "")
-            if not appdata:
-                return None
-            base = Path(appdata) / "Zotero"
-            profiles_ini = base / "Profiles" / "profiles.ini"
+            # Check multiple Windows paths in order of preference
+            windows_paths = [
+                ("APPDATA", os.environ.get("APPDATA", "")),
+                ("LOCALAPPDATA", os.environ.get("LOCALAPPDATA", "")),
+                ("USERPROFILE", os.path.join(os.environ.get("USERPROFILE", ""), "Documents")),
+            ]
+            
+            for env_name, base_path in windows_paths:
+                if not base_path:
+                    continue
+                
+                base = Path(base_path) / "Zotero"
+                profiles_ini = base / "Profiles" / "profiles.ini"
+                
+                if profiles_ini.exists():
+                    # Parse profiles.ini to find default profile
+                    profile_path = LocalZoteroDbAdapter._parse_profiles_ini(profiles_ini, base)
+                    if profile_path is not None:
+                        return profile_path
+            
+            # If no profile found in any Windows path, return None
+            return None
         elif system == "Darwin":  # macOS
             base = Path.home() / "Library" / "Application Support" / "Zotero"
             profiles_ini = base / "Profiles" / "profiles.ini"
@@ -514,10 +563,44 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
                         alt_path = self._storage_dir / parent_item_key / filename
                         if alt_path.exists():
                             return alt_path
+                    
+                    # Suggest filename variations
+                    suggestions = []
+                    if filename:
+                        # Try common variations
+                        base_name = Path(filename).stem
+                        ext = Path(filename).suffix
+                        variations = [
+                            f"{base_name}{ext}",
+                            f"{base_name.lower()}{ext}",
+                            f"{base_name.upper()}{ext}",
+                            filename.replace(" ", "_"),
+                            filename.replace("_", " "),
+                        ]
+                        
+                        # Check if any variations exist
+                        for variation in variations:
+                            var_path = self._storage_dir / attachment_key / variation
+                            if var_path.exists():
+                                suggestions.append(f"  - Found: {var_path}")
+                            # Also check parent_item_key location
+                            if parent_item_key:
+                                var_path = self._storage_dir / parent_item_key / variation
+                                if var_path.exists():
+                                    suggestions.append(f"  - Found: {var_path}")
+                    
+                    hint_msg = f"File not found at: {file_path}"
+                    if suggestions:
+                        hint_msg += f"\nSimilar filenames found:\n" + "\n".join(suggestions)
+                    hint_msg += f"\nChecked locations:\n  - {file_path}"
+                    if parent_item_key:
+                        hint_msg += f"\n  - {self._storage_dir / parent_item_key / filename}"
+                    hint_msg += f"\nIf file exists with different name, check Zotero storage directory manually."
+                    
                     raise ZoteroPathResolutionError(
                         attachment_key,
                         link_mode=0,
-                        hint=f"File not found at: {file_path}",
+                        hint=hint_msg,
                     )
                 return file_path
             elif link_mode == 1:  # Linked file
@@ -526,10 +609,39 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
                     linked_path = Path(db_path)
                     if linked_path.exists():
                         return linked_path
+                    # Suggest filename variations for linked files
+                    hint_msg = f"Linked file not found at: {db_path}"
+                    if db_path:
+                        db_path_obj = Path(db_path)
+                        if db_path_obj.parent.exists():
+                            # Check if similar filenames exist in the same directory
+                            parent_dir = db_path_obj.parent
+                            filename = db_path_obj.name
+                            if filename:
+                                base_name = db_path_obj.stem
+                                ext = db_path_obj.suffix
+                                variations = [
+                                    f"{base_name}{ext}",
+                                    f"{base_name.lower()}{ext}",
+                                    f"{base_name.upper()}{ext}",
+                                    filename.replace(" ", "_"),
+                                    filename.replace("_", " "),
+                                ]
+                                
+                                suggestions = []
+                                for variation in variations:
+                                    var_path = parent_dir / variation
+                                    if var_path.exists():
+                                        suggestions.append(f"  - Found: {var_path}")
+                                
+                                if suggestions:
+                                    hint_msg += f"\nSimilar filenames found:\n" + "\n".join(suggestions)
+                                hint_msg += f"\nVerify the file path in Zotero or check if the file was moved."
+                    
                     raise ZoteroPathResolutionError(
                         attachment_key,
                         link_mode=1,
-                        hint=f"Linked file not found at: {db_path}",
+                        hint=hint_msg,
                     )
                 else:
                     raise ZoteroPathResolutionError(

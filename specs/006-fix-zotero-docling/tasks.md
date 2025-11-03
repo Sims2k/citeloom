@@ -178,8 +178,8 @@
 
 ### Implementation for User Story 6
 
-- [ ] T049 [US6] Move HTTP request logs from INFO to DEBUG level in `src/infrastructure/logging.py`
-- [ ] T050 [US6] Configure HTTP client logging to respect verbose mode flag in `src/infrastructure/logging.py`
+- [X] T049 [US6] Move HTTP request logs from INFO to DEBUG level in `src/infrastructure/logging.py`
+- [X] T050 [US6] Configure HTTP client logging to respect verbose mode flag in `src/infrastructure/logging.py`
 - [ ] T051 [US6] Verify important information (progress, results, errors) remains visible at INFO level
 - [ ] T052a [US6] Add summary logging for API call counts (e.g., "Made 20 API calls in 35 seconds") instead of individual request logs
 
@@ -197,11 +197,11 @@
 
 ### Implementation for User Story 7
 
-- [ ] T053 [US7] Improve Windows Zotero profile detection by checking `%APPDATA%\Zotero` path in `src/infrastructure/adapters/zotero_local_db.py`
-- [ ] T054 [US7] Improve Windows Zotero profile detection by checking `%LOCALAPPDATA%\Zotero` path in `src/infrastructure/adapters/zotero_local_db.py`
-- [ ] T055 [US7] Improve Windows Zotero profile detection by checking `%USERPROFILE%\Documents\Zotero` path in `src/infrastructure/adapters/zotero_local_db.py`
-- [ ] T056 [US7] Improve error message when local adapter detection fails with clear configuration instructions in `src/infrastructure/adapters/zotero_local_db.py`
-- [ ] T057 [US7] Improve file not found error messages with filename variation suggestions in download processing
+- [X] T053 [US7] Improve Windows Zotero profile detection by checking `%APPDATA%\Zotero` path in `src/infrastructure/adapters/zotero_local_db.py`
+- [X] T054 [US7] Improve Windows Zotero profile detection by checking `%LOCALAPPDATA%\Zotero` path in `src/infrastructure/adapters/zotero_local_db.py`
+- [X] T055 [US7] Improve Windows Zotero profile detection by checking `%USERPROFILE%\Documents\Zotero` path in `src/infrastructure/adapters/zotero_local_db.py`
+- [X] T056 [US7] Improve error message when local adapter detection fails with clear configuration instructions in `src/infrastructure/adapters/zotero_local_db.py`
+- [X] T057 [US7] Improve file not found error messages with filename variation suggestions in download processing
 - [ ] T058a [US7] Update setup guide with Windows-specific Zotero profile configuration examples and troubleshooting steps in `docs/setup-guide.md`
 
 **Checkpoint**: User Story 7 complete - improved Windows profile detection and clear error messages with actionable guidance
