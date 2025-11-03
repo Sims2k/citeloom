@@ -154,13 +154,13 @@
 
 ### Implementation for User Story 4
 
-- [ ] T069 [US4] Integrate ContentFingerprintService.compute_fingerprint() into batch_import_from_zotero before document processing in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T070 [US4] Implement fingerprint comparison logic checking stored vs computed fingerprints in batch_import_from_zotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T071 [US4] Implement skip logic for unchanged documents: skip processing only if both hash AND metadata (mtime + size) match exactly; if hash matches but metadata differs, treat as changed document and perform full re-processing (collision protection per FR-019)
-- [ ] T072 [US4] Implement policy version checking to invalidate fingerprints on policy changes in batch_import_from_zotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T073 [US4] Store content fingerprint in DownloadManifestAttachment after successful download in batch_import_from_zotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T074 [US4] Update content fingerprint in manifest after document processing completes in batch_import_from_zotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T075 [US4] Add logging for skipped unchanged documents in batch_import_from_zotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [X] T069 [US4] Integrate ContentFingerprintService.compute_fingerprint() into batch_import_from_zotero before document processing in src/application/use_cases/batch_import_from_zotero.py
+- [X] T070 [US4] Implement fingerprint comparison logic checking stored vs computed fingerprints in batch_import_from_zotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [X] T071 [US4] Implement skip logic for unchanged documents: skip processing only if both hash AND metadata (mtime + size) match exactly; if hash matches but metadata differs, treat as changed document and perform full re-processing (collision protection per FR-019)
+- [X] T072 [US4] Implement policy version checking to invalidate fingerprints on policy changes in batch_import_from_zotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [X] T073 [US4] Store content fingerprint in DownloadManifestAttachment after successful download in batch_import_from_zotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [X] T074 [US4] Update content fingerprint in manifest after document processing completes in batch_import_from_zotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [X] T075 [US4] Add logging for skipped unchanged documents in batch_import_from_zotero use case in src/application/use_cases/batch_import_from_zotero.py
 
 **Checkpoint**: At this point, User Stories 1, 2, 3, AND 4 should all work independently
 

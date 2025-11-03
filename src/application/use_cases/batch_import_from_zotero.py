@@ -10,11 +10,13 @@ from pathlib import Path
 from typing import Any
 
 from ...domain.models.checkpoint import DocumentCheckpoint, IngestionCheckpoint
+from ...domain.models.content_fingerprint import ContentFingerprint
 from ...domain.models.download_manifest import (
     DownloadManifest,
     DownloadManifestAttachment,
     DownloadManifestItem,
 )
+from ...domain.services.content_fingerprint import ContentFingerprintService
 from ..dto.ingest import IngestRequest, IngestResult
 from ..ports.annotation_resolver import AnnotationResolverPort
 from ..ports.checkpoint_manager import CheckpointManagerPort
@@ -492,12 +494,45 @@ def batch_import_from_zotero(
                     
                     file_size = downloaded_path.stat().st_size if downloaded_path.exists() else None
                     
+                    # Compute content fingerprint after successful download (T073)
+                    content_fingerprint = None
+                    try:
+                        # Use default policy versions for initial fingerprint
+                        # These will be validated against stored fingerprints during processing
+                        chunking_policy_version = "1.0"  # Default version
+                        embedding_policy_version = "1.0"  # Default version
+                        
+                        content_fingerprint = ContentFingerprintService.compute_fingerprint(
+                            file_path=downloaded_path,
+                            embedding_model=embedding_model,
+                            chunking_policy_version=chunking_policy_version,
+                            embedding_policy_version=embedding_policy_version,
+                        )
+                        logger.debug(
+                            f"Computed fingerprint for attachment {attachment_key}",
+                            extra={
+                                "correlation_id": correlation_id,
+                                "attachment_key": attachment_key,
+                                "content_hash": content_fingerprint.content_hash[:16] + "...",
+                            },
+                        )
+                    except Exception as e:
+                        # Log warning but continue - fingerprint computation failure shouldn't block download
+                        warning_msg = f"Failed to compute fingerprint for attachment {attachment_key}: {e}"
+                        warnings.append(warning_msg)
+                        logger.warning(
+                            warning_msg,
+                            extra={"correlation_id": correlation_id, "attachment_key": attachment_key},
+                            exc_info=True,
+                        )
+                    
                     manifest_attachment = DownloadManifestAttachment(
                         attachment_key=attachment_key,
                         filename=filename,
                         local_path=downloaded_path.resolve(),  # Ensure absolute path
                         download_status="success",
                         file_size=file_size,
+                        content_fingerprint=content_fingerprint,
                     )
                     
                     total_attachments += 1
@@ -613,6 +648,79 @@ def batch_import_from_zotero(
                 logger.warning(warning_msg, extra={"correlation_id": correlation_id, "file_path": str(file_path)})
                 continue
             
+            # Compute content fingerprint for deduplication (T069)
+            # Policy versions for fingerprint computation
+            chunking_policy_version = "1.0"  # Default version - should match stored fingerprint policy
+            embedding_policy_version = "1.0"  # Default version - should match stored fingerprint policy
+            
+            computed_fingerprint: ContentFingerprint | None = None
+            try:
+                computed_fingerprint = ContentFingerprintService.compute_fingerprint(
+                    file_path=file_path,
+                    embedding_model=embedding_model,
+                    chunking_policy_version=chunking_policy_version,
+                    embedding_policy_version=embedding_policy_version,
+                )
+            except Exception as e:
+                warning_msg = f"Failed to compute fingerprint for {file_path.name}: {e}"
+                warnings.append(warning_msg)
+                logger.warning(warning_msg, extra={"correlation_id": correlation_id, "file_path": str(file_path)}, exc_info=True)
+                # Continue processing even if fingerprint computation fails
+                computed_fingerprint = None
+            
+            # Check if document is unchanged via fingerprint comparison (T070, T071, T072)
+            stored_fingerprint = attachment.content_fingerprint
+            is_unchanged = False
+            
+            if computed_fingerprint and stored_fingerprint:
+                # Validate policy versions match (T072) - if policy versions differ, treat as changed
+                policy_matches = (
+                    stored_fingerprint.chunking_policy_version == chunking_policy_version
+                    and stored_fingerprint.embedding_policy_version == embedding_policy_version
+                    and stored_fingerprint.embedding_model == embedding_model
+                )
+                
+                if policy_matches:
+                    # Compare fingerprints (hash + metadata) for collision protection (T071)
+                    is_unchanged = ContentFingerprintService.is_unchanged(
+                        stored=stored_fingerprint,
+                        computed=computed_fingerprint,
+                    )
+                else:
+                    # Policy mismatch - invalidate fingerprint, treat as changed
+                    logger.info(
+                        f"Policy mismatch detected for {file_path.name}. Policy change invalidates fingerprint. Re-processing required.",
+                        extra={
+                            "correlation_id": correlation_id,
+                            "file_path": str(file_path),
+                            "stored_chunking_policy": stored_fingerprint.chunking_policy_version,
+                            "stored_embedding_policy": stored_fingerprint.embedding_policy_version,
+                            "stored_embedding_model": stored_fingerprint.embedding_model,
+                            "current_chunking_policy": chunking_policy_version,
+                            "current_embedding_policy": embedding_policy_version,
+                            "current_embedding_model": embedding_model,
+                        },
+                    )
+                    is_unchanged = False
+            
+            # Skip processing if document is unchanged (T071, T075)
+            if is_unchanged:
+                logger.info(
+                    f"Skipping unchanged document: {file_path.name} (fingerprint match)",
+                    extra={
+                        "correlation_id": correlation_id,
+                        "file_path": str(file_path),
+                        "attachment_key": attachment.attachment_key,
+                        "content_hash": stored_fingerprint.content_hash[:16] + "..." if stored_fingerprint else None,
+                    },
+                )
+                # Still count it in total_documents_processed for progress tracking
+                total_documents_processed += 1
+                document_index += 1
+                if batch_progress:
+                    batch_progress.update(total_documents_processed)
+                continue
+            
             # Skip if already completed (resume logic)
             if file_path_str in completed_paths:
                 logger.debug(
@@ -690,6 +798,18 @@ def batch_import_from_zotero(
                 total_chunks += result.chunks_written
                 chunks_since_last_checkpoint += result.chunks_written
                 total_documents_processed += result.documents_processed
+                
+                # Update content fingerprint in manifest after document processing completes (T074)
+                if computed_fingerprint:
+                    attachment.content_fingerprint = computed_fingerprint
+                    logger.debug(
+                        f"Updated fingerprint in manifest for attachment {attachment.attachment_key}",
+                        extra={
+                            "correlation_id": correlation_id,
+                            "attachment_key": attachment.attachment_key,
+                            "content_hash": computed_fingerprint.content_hash[:16] + "...",
+                        },
+                    )
                 
                 # Update checkpoint: mark as completed
                 if checkpoint:
@@ -918,6 +1038,20 @@ def batch_import_from_zotero(
                                 exc_info=True,
                             )
                 continue
+    
+    # Save updated manifest with fingerprints after processing completes (T074)
+    if download_manifest and manifest_path:
+        try:
+            with manifest_path.open("w") as f:
+                json.dump(download_manifest.to_dict(), f, indent=2)
+            logger.debug(
+                f"Updated download manifest saved with fingerprints: {manifest_path}",
+                extra={"correlation_id": correlation_id, "manifest_path": str(manifest_path)},
+            )
+        except Exception as e:
+            warning_msg = f"Failed to save updated manifest: {e}"
+            warnings.append(warning_msg)
+            logger.warning(warning_msg, extra={"correlation_id": correlation_id}, exc_info=True)
     
     # Finish batch progress
     if batch_progress:
