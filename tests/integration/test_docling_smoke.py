@@ -1,22 +1,36 @@
 """Integration tests for Docling document conversion and chunking."""
 
 from pathlib import Path
+import pytest
 from src.domain.policy.chunking_policy import ChunkingPolicy
 from src.infrastructure.adapters.docling_converter import DoclingConverterAdapter
 from src.infrastructure.adapters.docling_chunker import DoclingHybridChunkerAdapter
 
 
-def test_docling_conversion_page_map():
-    """Test that DoclingConverterAdapter produces conversion result with page map."""
+@pytest.fixture
+def sample_pdf_path():
+    """Get path to sample PDF file if available."""
+    pdf_path = Path("assets/raw/Keen - 2025 - Clean Architecture with Python Implement scalable and maintainable applications using proven archit.pdf")
+    if pdf_path.exists():
+        return str(pdf_path.absolute())
+    return None
+
+
+@pytest.fixture
+def docling_converter():
+    """Get Docling converter if available."""
     try:
-        converter = DoclingConverterAdapter()
-    except ImportError:
-        # Docling not available (Windows compatibility)
-        # Use placeholder implementation
-        pass
+        return DoclingConverterAdapter()
+    except (ImportError, RuntimeError):
+        pytest.skip("Docling not available")
+
+
+def test_docling_conversion_page_map(docling_converter, sample_pdf_path):
+    """Test that DoclingConverterAdapter produces conversion result with page map."""
+    if not sample_pdf_path:
+        pytest.skip("Sample PDF not available")
     
-    converter = DoclingConverterAdapter()
-    result = converter.convert("dummy_path.pdf")
+    result = docling_converter.convert(sample_pdf_path)
     
     # Verify conversion result structure
     assert "doc_id" in result, "Conversion result should contain doc_id"
@@ -35,10 +49,12 @@ def test_docling_conversion_page_map():
             assert isinstance(offset, int), f"Offset should be int, got {type(offset)}"
 
 
-def test_docling_conversion_heading_tree():
+def test_docling_conversion_heading_tree(docling_converter, sample_pdf_path):
     """Test that DoclingConverterAdapter produces conversion result with heading tree."""
-    converter = DoclingConverterAdapter()
-    result = converter.convert("dummy_path.pdf")
+    if not sample_pdf_path:
+        pytest.skip("Sample PDF not available")
+    
+    result = docling_converter.convert(sample_pdf_path)
     
     structure = result.get("structure", {})
     assert "heading_tree" in structure, "Structure should contain heading_tree"
@@ -47,13 +63,15 @@ def test_docling_conversion_heading_tree():
     assert isinstance(heading_tree, dict), "heading_tree should be a dictionary"
 
 
-def test_docling_chunking_with_policy():
+def test_docling_chunking_with_policy(docling_converter, sample_pdf_path):
     """Test that DoclingHybridChunkerAdapter chunks documents according to policy."""
-    converter = DoclingConverterAdapter()
+    if not sample_pdf_path:
+        pytest.skip("Sample PDF not available")
+    
     chunker = DoclingHybridChunkerAdapter()
     
     # Convert a document
-    conversion_result = converter.convert("dummy_path.pdf")
+    conversion_result = docling_converter.convert(sample_pdf_path)
     
     # Create chunking policy
     policy = ChunkingPolicy(
@@ -81,12 +99,14 @@ def test_docling_chunking_with_policy():
     assert isinstance(first_chunk.chunk_idx, int), "Chunk should have chunk_idx"
 
 
-def test_docling_chunking_deterministic_ids():
+def test_docling_chunking_deterministic_ids(docling_converter, sample_pdf_path):
     """Test that chunking produces deterministic IDs for same inputs."""
-    converter = DoclingConverterAdapter()
+    if not sample_pdf_path:
+        pytest.skip("Sample PDF not available")
+    
     chunker = DoclingHybridChunkerAdapter()
     
-    conversion_result = converter.convert("dummy_path.pdf")
+    conversion_result = docling_converter.convert(sample_pdf_path)
     policy = ChunkingPolicy(tokenizer_id="minilm")
     
     # Chunk twice with same inputs
@@ -103,12 +123,14 @@ def test_docling_chunking_deterministic_ids():
         assert c1.chunk_idx == c2.chunk_idx
 
 
-def test_docling_chunking_page_spans():
+def test_docling_chunking_page_spans(docling_converter, sample_pdf_path):
     """Test that chunks have valid page spans."""
-    converter = DoclingConverterAdapter()
+    if not sample_pdf_path:
+        pytest.skip("Sample PDF not available")
+    
     chunker = DoclingHybridChunkerAdapter()
     
-    conversion_result = converter.convert("dummy_path.pdf")
+    conversion_result = docling_converter.convert(sample_pdf_path)
     policy = ChunkingPolicy(tokenizer_id="minilm")
     
     chunks = chunker.chunk(conversion_result, policy)

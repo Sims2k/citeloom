@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import Any
 
+    from src.domain.models.content_fingerprint import ContentFingerprint
+
 
 @dataclass
 class DownloadManifestAttachment:
@@ -20,9 +22,11 @@ class DownloadManifestAttachment:
         attachment_key: Zotero attachment key
         filename: Original filename
         local_path: Local file path where downloaded
-        download_status: "success" | "failed"
+        download_status: "success" | "failed" | "pending"
         file_size: File size in bytes (if download succeeded)
         error: Error message (if download failed)
+        source: Source marker ("local" | "web") indicating which source provided the attachment
+        content_fingerprint: Content fingerprint for deduplication (None if not computed yet)
     """
 
     attachment_key: str
@@ -31,6 +35,8 @@ class DownloadManifestAttachment:
     download_status: str = "pending"
     file_size: int | None = None
     error: str | None = None
+    source: str | None = None  # "local" | "web"
+    content_fingerprint: ContentFingerprint | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-compatible dict."""
@@ -44,11 +50,20 @@ class DownloadManifestAttachment:
             result["file_size"] = self.file_size
         if self.error is not None:
             result["error"] = self.error
+        if self.source is not None:
+            result["source"] = self.source
+        if self.content_fingerprint is not None:
+            result["content_fingerprint"] = self.content_fingerprint.to_dict()
         return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> DownloadManifestAttachment:
         """Deserialize from dict."""
+        from src.domain.models.content_fingerprint import ContentFingerprint
+
+        fingerprint_data = data.get("content_fingerprint")
+        fingerprint = ContentFingerprint.from_dict(fingerprint_data) if fingerprint_data else None
+
         return cls(
             attachment_key=data["attachment_key"],
             filename=data["filename"],
@@ -56,6 +71,8 @@ class DownloadManifestAttachment:
             download_status=data.get("download_status", "pending"),
             file_size=data.get("file_size"),
             error=data.get("error"),
+            source=data.get("source"),
+            content_fingerprint=fingerprint,
         )
 
     def __post_init__(self) -> None:
@@ -70,6 +87,8 @@ class DownloadManifestAttachment:
             raise ValueError("error must be non-empty when download_status is 'failed'")
         if self.file_size is not None and self.file_size < 0:
             raise ValueError("file_size must be >= 0 if provided")
+        if self.source is not None and self.source not in {"local", "web"}:
+            raise ValueError(f"source must be 'local' or 'web' if provided, got {self.source}")
 
 
 @dataclass
