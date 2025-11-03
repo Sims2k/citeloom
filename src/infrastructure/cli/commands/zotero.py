@@ -11,18 +11,18 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from ...application.ports.zotero_importer import ZoteroImporterPort
-from ...domain.errors import (
+from src.application.ports.zotero_importer import ZoteroImporterPort
+from src.domain.errors import (
     ZoteroAPIError,
     ZoteroConnectionError,
     ZoteroDatabaseLockedError,
     ZoteroDatabaseNotFoundError,
     ZoteroProfileNotFoundError,
 )
-from ...infrastructure.adapters.zotero_importer import ZoteroImporterAdapter
-from ...infrastructure.adapters.zotero_local_db import LocalZoteroDbAdapter
-from ...infrastructure.config.environment import load_environment_variables
-from ...infrastructure.config.settings import Settings
+from src.infrastructure.adapters.zotero_importer import ZoteroImporterAdapter
+from src.infrastructure.adapters.zotero_local_db import LocalZoteroDbAdapter
+from src.infrastructure.config.environment import load_environment_variables
+from src.infrastructure.config.settings import Settings
 
 app = typer.Typer(help="Browse and explore Zotero library structure")
 console = Console()
@@ -56,7 +56,8 @@ def _get_zotero_adapter(config_path: str = "citeloom.toml") -> ZoteroImporterPor
     except (ZoteroProfileNotFoundError, ZoteroDatabaseNotFoundError, ZoteroDatabaseLockedError) as e:
         # Local adapter unavailable, fall back to web adapter
         logger.warning(f"Local adapter unavailable: {e}, falling back to web adapter")
-        console.print(f"[yellow]Note: Local database unavailable ({e.message}), using web API[/yellow]")
+        error_msg = str(e)
+        console.print(f"[yellow]Note: Local database unavailable ({error_msg}), using web API[/yellow]")
     except Exception as e:
         # Other errors - log but continue to try web adapter
         logger.warning(f"Failed to initialize local adapter: {e}, falling back to web adapter")
@@ -82,14 +83,17 @@ def _get_zotero_adapter(config_path: str = "citeloom.toml") -> ZoteroImporterPor
 
 @app.command()
 def list_collections(
-    subcollections: bool = typer.Option(False, "--subcollections", "-s", help="Show subcollection hierarchy"),
+    subcollections: bool = typer.Option(True, "--subcollections/--no-subcollections", "-s/-S", help="Show subcollection hierarchy (default: True)"),
 ) -> None:
     """
-    List all top-level collections in Zotero library with hierarchical structure.
+    List all collections in Zotero library with hierarchical structure and item counts.
+    
+    By default, shows all collections including subcollections. Use --no-subcollections to show only top-level collections.
     
     Examples:
         citeloom zotero list-collections
-        citeloom zotero list-collections --subcollections
+        citeloom zotero list-collections --no-subcollections
+        citeloom zotero list-collections -S
     """
     adapter = _get_zotero_adapter()
     
@@ -100,12 +104,26 @@ def list_collections(
             console.print("[yellow]No collections found in Zotero library[/yellow]")
             return
         
-        # Build collection lookup by key
+        # Fetch item counts for each collection
         collection_map: dict[str, dict[str, Any]] = {}
         for coll in collections:
             key = coll.get("key", "")
             if key:
                 collection_map[key] = coll
+                # Initialize item_count if not present
+                if "item_count" not in coll:
+                    coll["item_count"] = 0
+        
+        # Count items in each collection
+        console.print("[dim]Counting items in collections...[/dim]")
+        for coll_key, coll_data in collection_map.items():
+            try:
+                # Count items in this collection (not including subcollections for the count)
+                items = list(adapter.get_collection_items(coll_key, include_subcollections=False))
+                coll_data["item_count"] = len(items)
+            except Exception as e:
+                logger.warning(f"Failed to count items for collection {coll_key}: {e}")
+                coll_data["item_count"] = 0
         
         # Build parent-child relationships
         children_map: dict[str, list[dict[str, Any]]] = {}
@@ -150,10 +168,12 @@ def list_collections(
                     name = coll_item.get("name", "")
                     key = coll_item.get("key", "")
                     item_count = coll_item.get("item_count", 0)
+                    # Use ASCII-safe characters for Windows compatibility
+                    prefix = "`- " if depth > 0 else ""
                     table.add_row(
-                        f"{indent}{'└─ ' if depth > 0 else ''}{name}",
+                        f"{indent}{prefix}{name}",
                         key,
-                        str(item_count) if item_count > 0 else "-",
+                        str(item_count) if item_count > 0 else "0",
                     )
         else:
             # Simple list of top-level collections only with item counts
@@ -173,7 +193,7 @@ def list_collections(
                 table.add_row(
                     coll.get("name", ""),
                     coll.get("key", ""),
-                    str(item_count) if item_count > 0 else "-",
+                    str(item_count) if item_count > 0 else "0",
                 )
         
         console.print(table)
@@ -352,8 +372,8 @@ def browse_collection(
         
     except ZoteroConnectionError as e:
         console.print(f"[red]Zotero connection error: {e.message}[/red]")
-        if e.reason:
-            console.print(f"[yellow]Reason: {e.reason}[/yellow]")
+        if e.details and e.details.get("reason"):
+            console.print(f"[yellow]Reason: {e.details.get('reason')}[/yellow]")
         console.print("[yellow]Please verify Zotero configuration and connectivity[/yellow]")
         raise typer.Exit(code=1)
     except ZoteroAPIError as e:
@@ -428,8 +448,8 @@ def recent_items(
         
     except ZoteroConnectionError as e:
         console.print(f"[red]Zotero connection error: {e.message}[/red]")
-        if e.reason:
-            console.print(f"[yellow]Reason: {e.reason}[/yellow]")
+        if e.details and e.details.get("reason"):
+            console.print(f"[yellow]Reason: {e.details.get('reason')}[/yellow]")
         console.print("[yellow]Please verify Zotero configuration and connectivity[/yellow]")
         raise typer.Exit(code=1)
     except ZoteroAPIError as e:
@@ -494,8 +514,8 @@ def list_tags() -> None:
         
     except ZoteroConnectionError as e:
         console.print(f"[red]Zotero connection error: {e.message}[/red]")
-        if e.reason:
-            console.print(f"[yellow]Reason: {e.reason}[/yellow]")
+        if e.details and e.details.get("reason"):
+            console.print(f"[yellow]Reason: {e.details.get('reason')}[/yellow]")
         console.print("[yellow]Please verify Zotero configuration and connectivity[/yellow]")
         raise typer.Exit(code=1)
     except ZoteroAPIError as e:

@@ -60,9 +60,27 @@ class DoclingConverterAdapter:
     def _initialize_converter(self) -> None:
         """Initialize DocumentConverter with OCR configuration."""
         try:
+            logger.info("Initializing Docling DocumentConverter (this may take a moment on first run while models are downloaded)...")
+            
+            # Check for model cache directory to show user if models are cached
+            import os
+            from pathlib import Path
+            
+            # Docling stores models in ~/.cache/docling/models by default
+            cache_dir = Path.home() / ".cache" / "docling" / "models"
+            if cache_dir.exists():
+                model_count = len(list(cache_dir.rglob("*.onnx"))) + len(list(cache_dir.rglob("*.bin"))) + len(list(cache_dir.rglob("*.pt")))
+                if model_count > 0:
+                    logger.info(f"Found {model_count} cached model files in {cache_dir}. Using cached models.")
+                else:
+                    logger.info(f"Model cache directory exists but appears empty. Models will be downloaded on first use.")
+            else:
+                logger.info(f"Model cache directory not found. Models will be downloaded to {cache_dir} on first use.")
+            
             # Configure pipeline options with OCR enabled (if available)
             # Docling v2 supports OCR via Tesseract/RapidOCR
             # If pipeline options are not available, use default converter
+            logger.info("Configuring Docling pipeline options...")
             if DoclingPipelineOptions:
                 pipeline_options = DoclingPipelineOptions()
                 
@@ -74,15 +92,17 @@ class DoclingConverterAdapter:
                     # Enable OCR detection and processing
                     pipeline_options.pdf = pdf_options
                 
+                logger.info("Creating DocumentConverter instance (this may take 10-30 seconds on first run)...")
                 self.converter = DocumentConverter(
                     pipeline_options=pipeline_options,
                     # Allow common formats: PDF, DOCX, PPTX, HTML, images
                 )
             else:
                 # Fallback: initialize without pipeline options
+                logger.info("Creating DocumentConverter instance (this may take 10-30 seconds on first run)...")
                 self.converter = DocumentConverter()
             
-            logger.debug("DocumentConverter initialized with OCR support")
+            logger.info("DocumentConverter initialized successfully with OCR support")
         except Exception as e:
             logger.error(f"Failed to initialize DocumentConverter: {e}", exc_info=True)
             raise
@@ -570,8 +590,13 @@ class DoclingConverterAdapter:
         doc_id = self._compute_doc_id(source_path)
         
         try:
+            # Log conversion start with progress indication
+            logger.info(f"Starting document conversion pipeline (this may take a moment, especially for large PDFs)...")
+            
             # Convert with timeout enforcement
             conversion_result = self._convert_with_timeout(source_path)
+            
+            logger.info(f"Document conversion pipeline completed, extracting results...")
             
             # Extract document object
             if hasattr(conversion_result, 'document'):

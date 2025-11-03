@@ -355,81 +355,46 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         def _download_file() -> Path:
-            if self.local:
-                # Local API: Access files directly from Zotero storage directory
-                # Zotero stores files in ~/Zotero/storage/{item_key}/{attachment_key}/
-                # or ~/Zotero/storage/{item_key}/{filename}
-                import os
-                from pathlib import Path
+            # Both local and remote API use zot.file() method
+            # Local API goes through Better BibTeX JSON-RPC which handles file access
+            self._rate_limit()
+            try:
+                # Download file content via API (works for both local and remote)
+                # pyzotero file() method takes only the attachment key as positional argument
+                file_data = self.zot.file(attachment_key)  # type: ignore[union-attr]
 
-                zotero_storage = Path.home() / "Zotero" / "storage"
-
-                # Try different possible paths
-                possible_paths = [
-                    zotero_storage / item_key / attachment_key,
-                    zotero_storage / item_key,
-                ]
-
-                # Get attachment metadata to find filename
-                try:
-                    self._rate_limit()
-                    attachment_data = self.zot.item(attachment_key)  # type: ignore[union-attr]
-                    filename = attachment_data.get("data", {}).get("filename", "")
-                    if filename:
-                        possible_paths.insert(0, zotero_storage / item_key / filename)
-                except Exception:
-                    pass
-
-                # Look for PDF files in the item directory
-                item_dir = zotero_storage / item_key
-                if item_dir.exists():
-                    for file_path in item_dir.rglob("*.pdf"):
-                        # Copy file to output path
-                        shutil.copy2(file_path, output_path)
-                        logger.info(
-                            f"Downloaded attachment from local storage: {output_path}",
-                            extra={"item_key": item_key, "attachment_key": attachment_key, "output_path": str(output_path)},
+                # Write to output path
+                with output_path.open("wb") as f:
+                    if isinstance(file_data, bytes):
+                        f.write(file_data)
+                    elif hasattr(file_data, "read"):
+                        f.write(file_data.read())
+                    else:
+                        raise ZoteroAPIError(
+                            f"Unexpected file data type: {type(file_data)}",
+                            details={"item_key": item_key, "attachment_key": attachment_key},
                         )
-                        return output_path
 
-                raise ZoteroAPIError(
-                    f"Attachment file not found in local Zotero storage for item {item_key}",
-                    details={"item_key": item_key, "attachment_key": attachment_key, "storage_path": str(zotero_storage)},
+                api_type = "local" if self.local else "remote"
+                logger.info(
+                    f"Downloaded attachment from {api_type} API: {output_path}",
+                    extra={"item_key": item_key, "attachment_key": attachment_key, "output_path": str(output_path), "api_type": api_type},
                 )
+                return output_path
 
-            else:
-                # Remote API: Use zot.file() to download
-                self._rate_limit()
-                try:
-                    # Download file content
-                    file_data = self.zot.file(item_key, attachment_key)  # type: ignore[union-attr]
-
-                    # Write to output path
-                    with output_path.open("wb") as f:
-                        if isinstance(file_data, bytes):
-                            f.write(file_data)
-                        elif hasattr(file_data, "read"):
-                            f.write(file_data.read())
-                        else:
-                            raise ZoteroAPIError(
-                                f"Unexpected file data type: {type(file_data)}",
-                                details={"item_key": item_key, "attachment_key": attachment_key},
-                            )
-
-                    logger.info(
-                        f"Downloaded attachment from remote API: {output_path}",
-                        extra={"item_key": item_key, "attachment_key": attachment_key, "output_path": str(output_path)},
-                    )
-                    return output_path
-
-                except Exception as e:
-                    error_str = str(e).lower()
-                    if "rate" in error_str or "limit" in error_str or "429" in error_str:
-                        raise ZoteroRateLimitError("Zotero API rate limit exceeded", retry_after=60) from e
+            except Exception as e:
+                error_str = str(e).lower()
+                if "rate" in error_str or "limit" in error_str or "429" in error_str:
+                    raise ZoteroRateLimitError("Zotero API rate limit exceeded", retry_after=60) from e
+                if "not found" in error_str or "404" in error_str or "does not exist" in error_str:
                     raise ZoteroAPIError(
-                        f"Failed to download attachment: {e}",
+                        f"Attachment not found: {e}",
                         details={"item_key": item_key, "attachment_key": attachment_key, "error": str(e)},
                     ) from e
+                raise ZoteroAPIError(
+                    f"Failed to download attachment: {e}",
+                    details={"item_key": item_key, "attachment_key": attachment_key, "error": str(e)},
+                ) from e
 
         return self._retry_with_backoff(_download_file, max_retries=3, base_delay=1.0, max_delay=30.0, jitter=True)
 
@@ -548,13 +513,27 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
             self._rate_limit()
             try:
                 tags = self.zot.tags()  # type: ignore[union-attr]
-                return [
-                    {
-                        "tag": tag.get("tag", ""),
-                        "meta": tag.get("meta", {}),
-                    }
-                    for tag in tags
-                ]
+                result = []
+                for tag in tags:
+                    # Handle both dict and string formats from pyzotero
+                    if isinstance(tag, dict):
+                        result.append({
+                            "tag": tag.get("tag", ""),
+                            "meta": tag.get("meta", {}),
+                        })
+                    elif isinstance(tag, str):
+                        # Tags can be returned as simple strings
+                        result.append({
+                            "tag": tag,
+                            "meta": {},
+                        })
+                    else:
+                        # Fallback: convert to string
+                        result.append({
+                            "tag": str(tag),
+                            "meta": {},
+                        })
+                return result
             except Exception as e:
                 error_str = str(e).lower()
                 if "rate" in error_str or "limit" in error_str or "429" in error_str:
