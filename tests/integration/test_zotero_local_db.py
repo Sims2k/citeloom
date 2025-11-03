@@ -36,28 +36,19 @@ def mock_zotero_db(tmp_path: Path) -> Path:
         )
     """)
 
-    # Create items table
+    # Create items table (with JSON data column)
     cursor.execute("""
         CREATE TABLE items (
             itemID INTEGER PRIMARY KEY,
             itemTypeID INTEGER,
             key TEXT UNIQUE,
             dateAdded TEXT,
-            dateModified TEXT
+            dateModified TEXT,
+            data TEXT
         )
     """)
 
-    # Create itemData table (JSON storage)
-    cursor.execute("""
-        CREATE TABLE itemData (
-            itemID INTEGER,
-            fieldID INTEGER,
-            value TEXT,
-            PRIMARY KEY (itemID, fieldID)
-        )
-    """)
-
-    # Create itemAttachments table
+    # Create itemAttachments table (with JSON data column)
     cursor.execute("""
         CREATE TABLE itemAttachments (
             itemID INTEGER,
@@ -66,7 +57,8 @@ def mock_zotero_db(tmp_path: Path) -> Path:
             linkMode INTEGER,
             path TEXT,
             storageModTime INTEGER,
-            contentType TEXT
+            contentType TEXT,
+            data TEXT
         )
     """)
 
@@ -104,18 +96,51 @@ def mock_zotero_db(tmp_path: Path) -> Path:
         "INSERT INTO collections (collectionID, collectionName, parentCollectionID, key) VALUES (2, 'Sub Collection', 1, 'COL2')"
     )
 
+    # Insert items with JSON data
+    import json
+    item1_data = json.dumps({
+        "itemType": "journalArticle",
+        "title": "Test Title 1",
+        "creators": [{"firstName": "John", "lastName": "Doe", "creatorType": "author"}],
+        "date": "2024",
+        "tags": [{"tag": "test-tag"}]
+    })
+    item2_data = json.dumps({
+        "itemType": "book",
+        "title": "Test Title 2",
+        "creators": [{"firstName": "Jane", "lastName": "Smith", "creatorType": "author"}],
+        "date": "2023",
+        "tags": [{"tag": "test-tag"}]
+    })
+    
     cursor.execute(
-        "INSERT INTO items (itemID, itemTypeID, key, dateAdded) VALUES (1, 2, 'ITEM1', '2024-01-01T00:00:00Z')"
+        "INSERT INTO items (itemID, itemTypeID, key, dateAdded, data) VALUES (1, 2, 'ITEM1', '2024-01-01T00:00:00Z', ?)",
+        (item1_data,)
     )
     cursor.execute(
-        "INSERT INTO items (itemID, itemTypeID, key, dateAdded) VALUES (2, 2, 'ITEM2', '2024-01-02T00:00:00Z')"
+        "INSERT INTO items (itemID, itemTypeID, key, dateAdded, data) VALUES (2, 2, 'ITEM2', '2024-01-02T00:00:00Z', ?)",
+        (item2_data,)
     )
 
+    # Insert attachments with JSON data
+    attach1_data = json.dumps({
+        "filename": "test.pdf",
+        "contentType": "application/pdf",
+        "linkMode": 0
+    })
+    attach2_data = json.dumps({
+        "filename": "file.pdf",
+        "contentType": "application/pdf",
+        "linkMode": 1
+    })
+    
     cursor.execute(
-        "INSERT INTO itemAttachments (itemID, key, parentItemID, linkMode, path) VALUES (1, 'ATTACH1', 1, 0, 'storage/ATTACH1/test.pdf')"
+        "INSERT INTO itemAttachments (itemID, key, parentItemID, linkMode, path, data) VALUES (1, 'ATTACH1', 1, 0, 'storage/ATTACH1/test.pdf', ?)",
+        (attach1_data,)
     )
     cursor.execute(
-        "INSERT INTO itemAttachments (itemID, key, parentItemID, linkMode, path) VALUES (2, 'ATTACH2', 2, 1, '/absolute/path/to/file.pdf')"
+        "INSERT INTO itemAttachments (itemID, key, parentItemID, linkMode, path, data) VALUES (2, 'ATTACH2', 2, 1, '/absolute/path/to/file.pdf', ?)",
+        (attach2_data,)
     )
 
     cursor.execute("INSERT INTO collectionItems (collectionID, itemID) VALUES (1, 1)")
@@ -124,10 +149,6 @@ def mock_zotero_db(tmp_path: Path) -> Path:
     cursor.execute("INSERT INTO tags (tagID, name) VALUES (1, 'test-tag')")
     cursor.execute("INSERT INTO itemTags (itemID, tagID) VALUES (1, 1)")
     cursor.execute("INSERT INTO itemTags (itemID, tagID) VALUES (2, 1)")
-
-    # Insert JSON data for items
-    cursor.execute("INSERT INTO itemData (itemID, fieldID, value) VALUES (1, 110, 'Test Title 1')")
-    cursor.execute("INSERT INTO itemData (itemID, fieldID, value) VALUES (2, 110, 'Test Title 2')")
 
     conn.commit()
     conn.close()
@@ -247,8 +268,8 @@ class TestLocalZoteroDbSQLQueries:
         # Find the test collection
         test_col = next((c for c in collections if c.get("name") == "Test Collection"), None)
         assert test_col is not None
-        assert test_col["key"] == "COL1"
-        assert test_col.get("parent_collection") is None
+        assert test_col["key"] == "1"  # collectionID converted to string
+        assert test_col.get("parentCollection") is None
 
     def test_get_collection_items(self, mock_zotero_db: Path, mock_zotero_storage: Path):
         """Test getting items from a collection."""
@@ -259,7 +280,7 @@ class TestLocalZoteroDbSQLQueries:
         test_col = next((c for c in collections if c.get("name") == "Test Collection"), None)
         assert test_col is not None
 
-        items = adapter.get_collection_items(test_col["key"])
+        items = list(adapter.get_collection_items(test_col["key"]))  # Convert generator to list
 
         assert len(items) >= 2  # Should have at least 2 items
         item_keys = [item.get("key") for item in items]
@@ -336,11 +357,7 @@ class TestLocalZoteroDbPathResolution:
         assert len(attachments) > 0
 
         attach_info = attachments[0]
-        path = adapter.resolve_attachment_path(
-            attachment_key=attach_info["key"],
-            link_mode=0,
-            path_hint=attach_info.get("path", ""),
-        )
+        path = adapter.resolve_attachment_path(attachment_key=attach_info["key"])
 
         assert path is not None
         assert isinstance(path, Path)
@@ -357,11 +374,7 @@ class TestLocalZoteroDbPathResolution:
 
         attach_info = attachments[0]
         try:
-            path = adapter.resolve_attachment_path(
-                attachment_key=attach_info["key"],
-                link_mode=1,
-                path_hint=attach_info.get("path", ""),
-            )
+            path = adapter.resolve_attachment_path(attachment_key=attach_info["key"])
             # For linked files, path should be absolute
             # In test, file may not exist, so we just check it's a Path object
             assert isinstance(path, Path)
@@ -376,11 +389,7 @@ class TestLocalZoteroDbPathResolution:
         adapter = LocalZoteroDbAdapter(db_path=mock_zotero_db, storage_dir=mock_zotero_storage)
 
         with pytest.raises(ZoteroPathResolutionError):
-            adapter.resolve_attachment_path(
-                attachment_key="NONEXISTENT",
-                link_mode=0,
-                path_hint="storage/NONEXISTENT/file.pdf",
-            )
+            adapter.resolve_attachment_path(attachment_key="NONEXISTENT")
 
     def test_download_attachment_imported(
         self, mock_zotero_db: Path, mock_zotero_storage: Path, tmp_path: Path
@@ -394,7 +403,7 @@ class TestLocalZoteroDbPathResolution:
         attach_key = attachments[0]["key"]
         destination = tmp_path / "downloaded_file.pdf"
 
-        downloaded_path = adapter.download_attachment(attach_key, destination)
+        downloaded_path = adapter.download_attachment("ITEM1", attach_key, destination)
 
         assert downloaded_path == destination
         assert destination.exists()
