@@ -22,6 +22,7 @@ console = Console()
 def collection(
     project: str = typer.Option(..., "--project", "-p", help="Project ID (e.g., citeloom/clean-arch)"),
     sample: int = typer.Option(0, "--sample", "-s", help="Number of sample chunks to display (0-10)"),
+    show_embedding_model: bool = typer.Option(False, "--show-embedding-model", help="Display embedding model information for the collection"),
     config_path: str = typer.Option("citeloom.toml", help="Path to citeloom.toml configuration file"),
 ) -> None:
     """
@@ -37,6 +38,7 @@ def collection(
     Examples:
         citeloom inspect collection --project citeloom/clean-arch
         citeloom inspect collection --project citeloom/clean-arch --sample 5
+        citeloom inspect collection --project citeloom/clean-arch --show-embedding-model
     """
     # Load settings
     try:
@@ -88,6 +90,18 @@ def collection(
     metadata = getattr(collection_info, "metadata", None) or {}
     dense_model_id = metadata.get("dense_model_id") or metadata.get("embed_model") or project_settings.embedding_model
     sparse_model_id = metadata.get("sparse_model_id")
+    
+    # T100, T101: Display embedding model information if requested
+    if show_embedding_model:
+        console.print(f"\n[bold cyan]Embedding Model Information[/bold cyan]")
+        console.print(f"  Collection: {collection_name}")
+        console.print(f"  Project: {project}")
+        console.print(f"  Bound Dense Model: [green]{dense_model_id}[/green]")
+        if sparse_model_id:
+            console.print(f"  Bound Sparse Model: [green]{sparse_model_id}[/green]")
+        console.print(f"  Project Config Model: {project_settings.embedding_model}")
+        console.print(f"  Hybrid Search: {'Enabled' if project_settings.hybrid_enabled else 'Disabled'}")
+        console.print()
     
     # Display collection overview
     console.print(f"\n[bold cyan]Collection: {collection_name}[/bold cyan]")

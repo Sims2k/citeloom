@@ -236,10 +236,10 @@
 
 ### Implementation for User Story 8
 
-- [ ] T099 [US8] Enhance EmbeddingModelMismatch error message to include collection name and resolution instructions in src/infrastructure/adapters/qdrant_index.py
-- [ ] T100 [US8] Add --show-embedding-model option to inspect CLI command in src/infrastructure/cli/commands/inspect.py
-- [ ] T101 [US8] Implement embedding model display in inspect command querying collection metadata in src/infrastructure/cli/commands/inspect.py
-- [ ] T102 [US8] Expose embedding model information in MCP inspect tool response in src/infrastructure/mcp/tools.py
+- [X] T099 [US8] Enhance EmbeddingModelMismatch error message to include collection name and resolution instructions in src/infrastructure/adapters/qdrant_index.py
+- [X] T100 [US8] Add --show-embedding-model option to inspect CLI command in src/infrastructure/cli/commands/inspect.py
+- [X] T101 [US8] Implement embedding model display in inspect command querying collection metadata in src/infrastructure/cli/commands/inspect.py
+- [X] T102 [US8] Expose embedding model information in MCP inspect tool response in src/infrastructure/mcp/tools.py
 
 **Checkpoint**: At this point, all User Stories 1-8 should be complete
 

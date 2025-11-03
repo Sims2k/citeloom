@@ -9,16 +9,30 @@ class EmbeddingModelMismatch(Exception):
         project_id: Project identifier
         expected_model: Expected embedding model
         provided_model: Provided embedding model
+        collection_name: Collection name (optional, for enhanced error messages)
     """
     
-    def __init__(self, project_id: str, expected_model: str, provided_model: str) -> None:
+    def __init__(
+        self,
+        project_id: str,
+        expected_model: str,
+        provided_model: str,
+        collection_name: str | None = None,
+    ) -> None:
         self.project_id = project_id
         self.expected_model = expected_model
         self.provided_model = provided_model
-        super().__init__(
-            f"Embedding model mismatch for project '{project_id}': "
-            f"expected '{expected_model}', provided '{provided_model}'"
+        self.collection_name = collection_name
+        
+        # Build friendly, actionable error message
+        collection_info = f"Collection '{collection_name}'" if collection_name else f"Project '{project_id}'"
+        message = (
+            f"{collection_info} is bound to embedding model '{expected_model}'. "
+            f"You requested '{provided_model}'. "
+            f"Use `citeloom ingest run --project {project_id} --embedding-model {expected_model}` "
+            f"to switch back to the bound model, or use `--force-rebuild` flag to migrate to the new model."
         )
+        super().__init__(message)
 
 
 class ProjectNotFound(Exception):

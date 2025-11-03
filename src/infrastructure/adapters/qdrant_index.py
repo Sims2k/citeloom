@@ -256,6 +256,7 @@ class QdrantIndexAdapter:
                         project_id=project_id,
                         expected_model=stored_dense_model,
                         provided_model=dense_model_id,
+                        collection_name=collection_name,
                     )
                 
                 # Validate sparse model match if provided
@@ -490,6 +491,7 @@ class QdrantIndexAdapter:
                     project_id=project_id,
                     expected_model=collection_data.get("dense_model_id", "unknown"),
                     provided_model=model_id,
+                    collection_name=collection_name,
                 )
             
             # Upsert items (using chunk id as key for idempotency)
