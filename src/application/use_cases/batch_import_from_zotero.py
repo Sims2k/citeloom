@@ -51,6 +51,7 @@ def batch_import_from_zotero(
     downloads_dir: Path | None = None,
     audit_dir: Path | None = None,
     checkpoints_dir: Path | None = None,
+    prefer_zotero_fulltext: bool = True,
 ) -> dict[str, Any]:
     """
     Orchestrate batch import of documents from Zotero collection.

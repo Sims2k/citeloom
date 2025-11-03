@@ -46,6 +46,7 @@ def run(
     exclude_tags: str | None = typer.Option(None, help="Comma-separated list of tags to exclude (ANY-match logic - any exclude tag excludes item). Only valid with --zotero-collection."),
     cleanup_checkpoints: bool = typer.Option(False, help="Delete checkpoint files after successful import (default: retain checkpoints)"),
     keep_checkpoints: bool = typer.Option(False, help="Explicitly keep checkpoint files (default: retain checkpoints). Mutually exclusive with --cleanup-checkpoints."),
+    prefer_zotero_fulltext: bool = typer.Option(True, help="Prefer Zotero fulltext when available (default: True). Set to False to always use Docling conversion."),
 ):
     """
     Ingest documents into a project-scoped collection.
@@ -221,6 +222,12 @@ def run(
         if exclude_tags_list:
             typer.echo(f"Exclude tags: {', '.join(exclude_tags_list)}")
         
+        # Get prefer_zotero_fulltext from settings or CLI override
+        prefer_zotero_fulltext_value = prefer_zotero_fulltext
+        if settings.zotero.prefer_zotero_fulltext is not None:
+            # CLI option overrides settings
+            prefer_zotero_fulltext_value = prefer_zotero_fulltext
+        
         try:
             result = batch_import_from_zotero(
                 project_id=project,
@@ -242,6 +249,7 @@ def run(
                 exclude_tags=exclude_tags_list,
                 audit_dir=audit_dir,
                 checkpoints_dir=checkpoints_dir,
+                prefer_zotero_fulltext=prefer_zotero_fulltext_value,
             )
             
             # Cleanup logic: delete checkpoint and manifest if --cleanup-checkpoints is set

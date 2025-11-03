@@ -102,19 +102,19 @@
 
 ### Implementation for User Story 2
 
-- [ ] T043 [US2] Create FulltextResolverPort protocol in src/application/ports/fulltext_resolver.py
-- [ ] T044 [US2] Create FulltextResult dataclass with text, source, pages_from_zotero, pages_from_docling, zotero_quality_score fields in src/application/ports/fulltext_resolver.py
-- [ ] T045 [US2] Create ZoteroFulltextResolverAdapter class in src/infrastructure/adapters/zotero_fulltext_resolver.py implementing FulltextResolverPort
-- [ ] T046 [US2] Implement ZoteroFulltextResolverAdapter.get_zotero_fulltext() querying fulltext table via SQLite in src/infrastructure/adapters/zotero_fulltext_resolver.py
-- [ ] T047 [US2] Implement fulltext quality validation (non-empty, minimum length, structure checks) in src/infrastructure/adapters/zotero_fulltext_resolver.py
-- [ ] T048 [US2] Implement ZoteroFulltextResolverAdapter.resolve_fulltext() with Zotero preference and Docling fallback in src/infrastructure/adapters/zotero_fulltext_resolver.py
-- [ ] T049 [US2] Implement page-level mixed provenance tracking (pages_from_zotero, pages_from_docling) in src/infrastructure/adapters/zotero_fulltext_resolver.py
-- [ ] T050 [US2] Implement sequential page concatenation for mixed provenance text in src/infrastructure/adapters/zotero_fulltext_resolver.py
-- [ ] T051 [US2] Integrate FulltextResolver into ingest_document use case before Docling conversion in src/application/use_cases/ingest_document.py
-- [ ] T052 [US2] Update ingest_document to use fulltext when available, skip Docling conversion but proceed with chunking/embedding/indexing in src/application/use_cases/ingest_document.py
-- [ ] T053 [US2] Add fulltext provenance metadata to audit logs in src/application/use_cases/ingest_document.py
-- [ ] T054 [US2] Add prefer_zotero_fulltext configuration option to Settings in src/infrastructure/config/settings.py
-- [ ] T055 [US2] Add prefer_zotero_fulltext CLI option to ingest command in src/infrastructure/cli/commands/ingest.py
+- [X] T043 [US2] Create FulltextResolverPort protocol in src/application/ports/fulltext_resolver.py
+- [X] T044 [US2] Create FulltextResult dataclass with text, source, pages_from_zotero, pages_from_docling, zotero_quality_score fields in src/application/ports/fulltext_resolver.py
+- [X] T045 [US2] Create ZoteroFulltextResolverAdapter class in src/infrastructure/adapters/zotero_fulltext_resolver.py implementing FulltextResolverPort
+- [X] T046 [US2] Implement ZoteroFulltextResolverAdapter.get_zotero_fulltext() querying fulltext table via SQLite in src/infrastructure/adapters/zotero_fulltext_resolver.py
+- [X] T047 [US2] Implement fulltext quality validation (non-empty, minimum length, structure checks) in src/infrastructure/adapters/zotero_fulltext_resolver.py
+- [X] T048 [US2] Implement ZoteroFulltextResolverAdapter.resolve_fulltext() with Zotero preference and Docling fallback in src/infrastructure/adapters/zotero_fulltext_resolver.py
+- [X] T049 [US2] Implement page-level mixed provenance tracking (pages_from_zotero, pages_from_docling) in src/infrastructure/adapters/zotero_fulltext_resolver.py
+- [X] T050 [US2] Implement sequential page concatenation for mixed provenance text in src/infrastructure/adapters/zotero_fulltext_resolver.py
+- [X] T051 [US2] Integrate FulltextResolver into ingest_document use case before Docling conversion in src/application/use_cases/ingest_document.py
+- [X] T052 [US2] Update ingest_document to use fulltext when available, skip Docling conversion but proceed with chunking/embedding/indexing in src/application/use_cases/ingest_document.py
+- [X] T053 [US2] Add fulltext provenance metadata to audit logs in src/application/use_cases/ingest_document.py
+- [X] T054 [US2] Add prefer_zotero_fulltext configuration option to Settings in src/infrastructure/config/settings.py
+- [X] T055 [US2] Add prefer_zotero_fulltext CLI option to ingest command in src/infrastructure/cli/commands/ingest.py
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 
