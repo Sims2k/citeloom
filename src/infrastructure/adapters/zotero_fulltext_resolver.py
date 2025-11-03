@@ -6,7 +6,7 @@ import logging
 import re
 import sqlite3
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ...application.ports.converter import TextConverterPort
 from ...application.ports.fulltext_resolver import FulltextResolverPort, FulltextResult
@@ -212,7 +212,7 @@ class ZoteroFulltextResolverAdapter(FulltextResolverPort):
 
     def _extract_docling_pages(
         self,
-        conversion_result: dict,
+        conversion_result: dict[str, Any],
     ) -> tuple[str, dict[int, str]]:
         """
         Extract pages from Docling conversion result.

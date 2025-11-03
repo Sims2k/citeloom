@@ -1,5 +1,12 @@
 """Domain errors for chunk retrieval operations."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Any
+
 
 class EmbeddingModelMismatch(Exception):
     """
@@ -223,3 +230,48 @@ class ZoteroAnnotationNotFoundError(Exception):
         if hint:
             msg += f". {hint}"
         super().__init__(msg)
+
+
+class ZoteroAPIError(Exception):
+    """
+    Raised when a Zotero API request fails.
+    
+    Attributes:
+        message: Error message
+        details: Optional dictionary with additional error details
+    """
+    
+    def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
+        self.message = message
+        self.details = details or {}
+        super().__init__(message)
+
+
+class ZoteroRateLimitError(Exception):
+    """
+    Raised when Zotero API rate limit is exceeded.
+    
+    Attributes:
+        message: Error message
+        retry_after: Seconds to wait before retrying
+    """
+    
+    def __init__(self, message: str, retry_after: int = 60) -> None:
+        self.message = message
+        self.retry_after = retry_after
+        super().__init__(f"{message} (retry after {retry_after}s)")
+
+
+class ZoteroConnectionError(Exception):
+    """
+    Raised when connection to Zotero API fails.
+    
+    Attributes:
+        message: Error message
+        details: Optional dictionary with additional error details
+    """
+    
+    def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
+        self.message = message
+        self.details = details or {}
+        super().__init__(message)

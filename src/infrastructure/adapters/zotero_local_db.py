@@ -92,7 +92,7 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
             Path to profile directory, or None if not found
         
         Platform paths:
-        - Windows: %APPDATA%\Zotero\Profiles\{profile_id}\
+        - Windows: %APPDATA%\\Zotero\\Profiles\\{profile_id}\\
         - macOS: ~/Library/Application Support/Zotero/Profiles/{profile_id}/
         - Linux: ~/.zotero/zotero/Profiles/{profile_id}/
         """

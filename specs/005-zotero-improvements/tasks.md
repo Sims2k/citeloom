@@ -266,28 +266,28 @@
 
 ### Testing
 
-- [ ] T112 [P] Create integration test for LocalZoteroDbAdapter profile detection in tests/integration/test_zotero_local_db.py
-- [ ] T113 [P] Create integration test for LocalZoteroDbAdapter SQL queries in tests/integration/test_zotero_local_db.py
-- [ ] T114 [P] Create integration test for LocalZoteroDbAdapter path resolution in tests/integration/test_zotero_local_db.py
-- [ ] T115 [P] Create integration test for FulltextResolver fulltext preference and fallback in tests/integration/test_zotero_fulltext.py
-- [ ] T116 [P] Create integration test for FulltextResolver mixed provenance in tests/integration/test_zotero_fulltext.py
-- [ ] T117 [P] Create integration test for AnnotationResolver extraction and indexing in tests/integration/test_zotero_annotations.py
-- [ ] T118 [P] Create integration test for incremental deduplication in tests/integration/test_zotero_deduplication.py
-- [ ] T119 [P] Create integration test for source router strategies in tests/integration/test_zotero_source_router.py
-- [ ] T120 [P] Create unit test for ContentFingerprint entity validation in tests/unit/test_domain_models.py
-- [ ] T121 [P] Create unit test for ContentFingerprintService fingerprint computation in tests/unit/test_domain_models.py
-- [ ] T122 [P] Create unit test for ZoteroSourceRouter strategy logic with doubles in tests/unit/test_zotero_source_router.py
-- [ ] T127 [P] Create performance test for query-by-zotero-key filtering (< 500ms for 10k chunks per SC-006) in tests/integration/test_zotero_query_performance.py
-- [ ] T128 [P] Create performance test for collection browsing operations (< 2 seconds per SC-001) in tests/integration/test_zotero_browsing_performance.py
-- [ ] T129 [P] Create performance test for import speedup with fulltext reuse (50-80% speedup per SC-002) in tests/integration/test_zotero_fulltext_performance.py
-- [ ] T130 [P] Create integration test for offline operation validation (100% offline success per SC-008) in tests/integration/test_zotero_offline.py
+- [X] T112 [P] Create integration test for LocalZoteroDbAdapter profile detection in tests/integration/test_zotero_local_db.py
+- [X] T113 [P] Create integration test for LocalZoteroDbAdapter SQL queries in tests/integration/test_zotero_local_db.py
+- [X] T114 [P] Create integration test for LocalZoteroDbAdapter path resolution in tests/integration/test_zotero_local_db.py
+- [X] T115 [P] Create integration test for FulltextResolver fulltext preference and fallback in tests/integration/test_zotero_fulltext.py
+- [X] T116 [P] Create integration test for FulltextResolver mixed provenance in tests/integration/test_zotero_fulltext.py
+- [X] T117 [P] Create integration test for AnnotationResolver extraction and indexing in tests/integration/test_zotero_annotations.py
+- [X] T118 [P] Create integration test for incremental deduplication in tests/integration/test_zotero_deduplication.py
+- [X] T119 [P] Create integration test for source router strategies in tests/integration/test_zotero_source_router.py
+- [X] T120 [P] Create unit test for ContentFingerprint entity validation in tests/unit/test_domain_models.py
+- [X] T121 [P] Create unit test for ContentFingerprintService fingerprint computation in tests/unit/test_domain_models.py
+- [X] T122 [P] Create unit test for ZoteroSourceRouter strategy logic with doubles in tests/unit/test_zotero_source_router.py
+- [X] T127 [P] Create performance test for query-by-zotero-key filtering (< 500ms for 10k chunks per SC-006) in tests/integration/test_zotero_query_performance.py
+- [X] T128 [P] Create performance test for collection browsing operations (< 2 seconds per SC-001) in tests/integration/test_zotero_browsing_performance.py
+- [X] T129 [P] Create performance test for import speedup with fulltext reuse (50-80% speedup per SC-002) in tests/integration/test_zotero_fulltext_performance.py
+- [X] T130 [P] Create integration test for offline operation validation (100% offline success per SC-008) in tests/integration/test_zotero_offline.py
 
 ### Code Quality
 
-- [ ] T123 [P] Run ruff format and check on all new files
-- [ ] T124 [P] Run mypy type checking on all new files
-- [ ] T125 [P] Verify architecture tests pass (no new dependency violations)
-- [ ] T126 [P] Run quickstart.md validation workflow
+- [X] T123 [P] Run ruff format and check on all new files
+- [X] T124 [P] Run mypy type checking on all new files
+- [X] T125 [P] Verify architecture tests pass (no new dependency violations)
+- [X] T126 [P] Run quickstart.md validation workflow
 
 ---
 

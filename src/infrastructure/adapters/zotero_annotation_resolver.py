@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import random
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
 from ...application.ports.annotation_resolver import Annotation, AnnotationResolverPort
 from ...application.ports.embeddings import EmbeddingPort
@@ -41,12 +41,12 @@ class ZoteroAnnotationResolverAdapter(AnnotationResolverPort):
 
     def _retry_with_backoff(
         self,
-        func: callable,
+        func: Callable[[], Any],
         max_retries: int = 3,
         base_delay: float = 1.0,
         max_delay: float = 30.0,
         jitter: bool = True,
-    ) -> any:
+    ) -> Any:
         """
         Retry function with exponential backoff and jitter.
         
@@ -240,7 +240,7 @@ class ZoteroAnnotationResolverAdapter(AnnotationResolverPort):
                     )
             
             # Prepare annotation items for indexing
-            items_to_index: list[dict[str, any]] = []
+            items_to_index: list[dict[str, Any]] = []
             
             for annotation in annotations:
                 # Create chunk text: quote + comment (if comment exists)
@@ -267,7 +267,7 @@ class ZoteroAnnotationResolverAdapter(AnnotationResolverPort):
                     continue  # Skip this annotation if embedding fails
                 
                 # Create annotation payload
-                payload: dict[str, any] = {
+                payload: dict[str, Any] = {
                     "type": "annotation",
                     "project_id": project_id,
                     "chunk_text": chunk_text,

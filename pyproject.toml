@@ -19,6 +19,7 @@ dependencies = [
     # Pin torch to <2.9.0 to avoid Windows DLL loading bug (see https://github.com/pytorch/pytorch/issues/166628)
     # PyTorch 2.9.0 has a known bug causing [WinError 1114] DLL initialization failures on Windows
     "torch>=2.8.0,<2.9.0",
+    "sqlite",
 ]
 
 [build-system]

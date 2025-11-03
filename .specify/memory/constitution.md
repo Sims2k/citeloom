@@ -633,4 +633,64 @@ Operating Procedure (Humans & Agents)
 
 ---
 
-**Version**: 1.13.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-01-27 (Milestone 003-framework-implementation complete: All 11 phases and 107 tasks finished. Production-ready document retrieval system with comprehensive testing, documentation, and polish complete)
+### Milestone: 005-zotero-improvements (Comprehensive Zotero Integration Improvements)
+
+**Feature Branch**: `005-zotero-improvements`
+
+**Planning Phase** — ✅ Complete (2025-01-27)
+- Created comprehensive feature specification (spec.md) with 8 user stories covering:
+  - Local SQLite database access for offline browsing and instant collection access
+  - Full-text reuse from Zotero to avoid redundant OCR processing
+  - PDF annotation extraction and indexing as separate vector points
+  - Embedding model governance with friendly diagnostics
+  - Incremental deduplication based on content hashes
+  - Enhanced library browsing tools (offline-capable)
+  - Flexible source router for local/web source selection
+  - Payload enrichment with Zotero keys for targeted queries
+- Generated requirements checklist (checklists/requirements.md) with specification quality validation
+- Completed clarification sessions resolving 9 critical ambiguities:
+  - Annotation indexing default behavior (opt-in via configuration)
+  - Source router default strategy (auto mode after rollout, web-first initially)
+  - Full-text quality validation thresholds (100 chars minimum, structure checks)
+  - Docling conversion failure handling (fail individual document, continue import)
+  - Mixed provenance text structure (sequential concatenation in page order)
+  - SQLite concurrent access safety (immutable read-only snapshot isolation)
+  - Content hash collision handling (metadata verification as secondary check)
+  - Source router fallback strategy (per-file fallback, not collection-level)
+  - Annotation extraction rate limit handling (retry with backoff, skip on failure)
+- Specification includes 39 functional requirements (FR-001 to FR-039)
+- Specification includes 10 measurable success criteria (SC-001 to SC-010)
+- All edge cases identified and documented with resolution strategies
+- Key entities defined: LocalZoteroDbAdapter, ZoteroSourceRouter, FulltextResolver, AnnotationResolver, ContentFingerprint
+
+**Implementation Planning Phase** — ✅ Complete (2025-01-27)
+- Generated implementation plan (plan.md) with technical context, constitution check, and project structure
+- Generated research document (research.md) with implementation patterns from zotero-mcp covering:
+  - SQLite immutable read-only access patterns
+  - Platform-aware profile detection
+  - Full-text quality validation
+  - Annotation extraction patterns
+  - Content hashing strategies
+  - Source routing and fallback strategies
+- Generated data model document (data-model.md) defining:
+  - ContentFingerprint entity for deduplication
+  - Enhanced DownloadManifestAttachment with source and content_fingerprint fields
+  - Enhanced Chunk payload with Zotero keys
+  - Annotation point payload structure
+- Generated port contracts (contracts/ports.md) defining:
+  - Enhanced ZoteroImporterPort interface
+  - FulltextResolverPort for full-text resolution
+  - AnnotationResolverPort for annotation extraction
+  - ZoteroSourceRouter application service
+  - Enhanced VectorIndexPort with Zotero key indexes
+- Generated quickstart guide (quickstart.md) with step-by-step implementation instructions
+- Generated actionable tasks.md with 126 tasks organized by 11 phases (Setup, Foundational, 8 User Stories, Polish)
+- Tasks organized by user story for independent implementation and testing
+- MVP scope identified: 43 tasks (Setup + Foundational + US1) for offline library browsing capability
+- All constitution gates passed - ready for implementation
+
+**Status**: ✅ Planning and task generation complete - Ready for implementation
+
+---
+
+**Version**: 1.15.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-01-27 (Milestone 005-zotero-improvements planning complete: Implementation plan and 126 actionable tasks generated across 11 phases, organized by 8 user stories. MVP scope: 43 tasks for offline library browsing. Ready for implementation)
