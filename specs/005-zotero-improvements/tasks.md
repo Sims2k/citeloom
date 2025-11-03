@@ -201,10 +201,10 @@
 
 ### Implementation for User Story 6
 
-- [ ] T090 [US6] Implement list-tags command displaying tags with usage counts in src/infrastructure/cli/commands/zotero.py
-- [ ] T091 [US6] Implement recent-items command displaying N most recent items (default 10, configurable via --limit option) sorted by dateAdded descending in src/infrastructure/cli/commands/zotero.py
-- [ ] T092 [US6] Enhance list-collections command to show hierarchical structure with indentation in src/infrastructure/cli/commands/zotero.py
-- [ ] T093 [US6] Enhance browse-collection command to show more metadata (publication years, creators) in src/infrastructure/cli/commands/zotero.py
+- [X] T090 [US6] Implement list-tags command displaying tags with usage counts in src/infrastructure/cli/commands/zotero.py
+- [X] T091 [US6] Implement recent-items command displaying N most recent items (default 10, configurable via --limit option) sorted by dateAdded descending in src/infrastructure/cli/commands/zotero.py
+- [X] T092 [US6] Enhance list-collections command to show hierarchical structure with indentation in src/infrastructure/cli/commands/zotero.py
+- [X] T093 [US6] Enhance browse-collection command to show more metadata (publication years, creators) in src/infrastructure/cli/commands/zotero.py
 
 **Checkpoint**: At this point, User Stories 1-6 should all work independently
 
