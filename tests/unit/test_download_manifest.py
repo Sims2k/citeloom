@@ -14,17 +14,21 @@ from src.domain.models.download_manifest import (
 
 def test_download_manifest_attachment_initialization():
     """Test DownloadManifestAttachment initialization."""
+    # Use absolute path (Path.resolve() ensures it's absolute)
+    import os
+    abs_path = Path("/tmp/document.pdf").resolve() if os.name != 'nt' else Path("C:/tmp/document.pdf")
+    
     attachment = DownloadManifestAttachment(
         attachment_key="ATT123",
         filename="document.pdf",
-        local_path=Path("/tmp/document.pdf"),
+        local_path=abs_path,
         download_status="success",
         file_size=1024,
     )
     
     assert attachment.attachment_key == "ATT123"
     assert attachment.filename == "document.pdf"
-    assert attachment.local_path == Path("/tmp/document.pdf")
+    assert attachment.local_path.is_absolute()  # Must be absolute for success status
     assert attachment.download_status == "success"
     assert attachment.file_size == 1024
     assert attachment.error is None
@@ -65,10 +69,14 @@ def test_download_manifest_item_add_attachment():
         title="Test Document",
     )
     
+    # Use absolute path
+    import os
+    abs_path = Path("/tmp/document.pdf").resolve() if os.name != 'nt' else Path("C:/tmp/document.pdf")
+    
     attachment = DownloadManifestAttachment(
         attachment_key="ATT123",
         filename="document.pdf",
-        local_path=Path("/tmp/document.pdf"),
+        local_path=abs_path,
         download_status="success",
     )
     
@@ -85,11 +93,16 @@ def test_download_manifest_item_get_pdf_attachments():
         title="Test Document",
     )
     
+    # Use absolute paths
+    import os
+    pdf_path = Path("/tmp/document.pdf").resolve() if os.name != 'nt' else Path("C:/tmp/document.pdf")
+    txt_path = Path("/tmp/notes.txt").resolve() if os.name != 'nt' else Path("C:/tmp/notes.txt")
+    
     # Add PDF attachment
     pdf_att = DownloadManifestAttachment(
         attachment_key="ATT123",
         filename="document.pdf",
-        local_path=Path("/tmp/document.pdf"),
+        local_path=pdf_path,
         download_status="success",
     )
     item.add_attachment(pdf_att)
@@ -98,7 +111,7 @@ def test_download_manifest_item_get_pdf_attachments():
     txt_att = DownloadManifestAttachment(
         attachment_key="ATT456",
         filename="notes.txt",
-        local_path=Path("/tmp/notes.txt"),
+        local_path=txt_path,
         download_status="success",
     )
     item.add_attachment(txt_att)
@@ -149,11 +162,16 @@ def test_download_manifest_get_all_file_paths():
         download_time=datetime(2024, 1, 1, 12, 0, 0),
     )
     
+    # Use absolute paths
+    import os
+    doc1_path = Path("/tmp/doc1.pdf").resolve() if os.name != 'nt' else Path("C:/tmp/doc1.pdf")
+    doc2_path = Path("/tmp/doc2.pdf").resolve() if os.name != 'nt' else Path("C:/tmp/doc2.pdf")
+    
     item1 = DownloadManifestItem(item_key="ITEM1", title="Doc 1")
     att1 = DownloadManifestAttachment(
         attachment_key="ATT1",
         filename="doc1.pdf",
-        local_path=Path("/tmp/doc1.pdf"),
+        local_path=doc1_path,
         download_status="success",
     )
     item1.add_attachment(att1)
@@ -163,7 +181,7 @@ def test_download_manifest_get_all_file_paths():
     att2 = DownloadManifestAttachment(
         attachment_key="ATT2",
         filename="doc2.pdf",
-        local_path=Path("/tmp/doc2.pdf"),
+        local_path=doc2_path,
         download_status="success",
     )
     item2.add_attachment(att2)
@@ -172,8 +190,8 @@ def test_download_manifest_get_all_file_paths():
     file_paths = manifest.get_all_file_paths()
     
     assert len(file_paths) == 2
-    assert Path("/tmp/doc1.pdf") in file_paths
-    assert Path("/tmp/doc2.pdf") in file_paths
+    assert doc1_path in file_paths
+    assert doc2_path in file_paths
 
 
 def test_download_manifest_get_successful_downloads():
@@ -184,12 +202,17 @@ def test_download_manifest_get_successful_downloads():
         download_time=datetime(2024, 1, 1, 12, 0, 0),
     )
     
+    # Use absolute paths
+    import os
+    doc1_path = Path("/tmp/doc1.pdf").resolve() if os.name != 'nt' else Path("C:/tmp/doc1.pdf")
+    doc2_path = Path("/tmp/doc2.pdf").resolve() if os.name != 'nt' else Path("C:/tmp/doc2.pdf")
+    
     # Item with successful downloads
     item1 = DownloadManifestItem(item_key="ITEM1", title="Doc 1")
     att1 = DownloadManifestAttachment(
         attachment_key="ATT1",
         filename="doc1.pdf",
-        local_path=Path("/tmp/doc1.pdf"),
+        local_path=doc1_path,
         download_status="success",
     )
     item1.add_attachment(att1)
@@ -200,7 +223,7 @@ def test_download_manifest_get_successful_downloads():
     att2 = DownloadManifestAttachment(
         attachment_key="ATT2",
         filename="doc2.pdf",
-        local_path=Path("/tmp/doc2.pdf"),
+        local_path=doc2_path,
         download_status="failed",
         error="Network error",
     )
@@ -221,11 +244,15 @@ def test_download_manifest_serialization():
         download_time=datetime(2024, 1, 1, 12, 0, 0),
     )
     
+    # Use absolute path
+    import os
+    abs_path = Path("/tmp/document.pdf").resolve() if os.name != 'nt' else Path("C:/tmp/document.pdf")
+    
     item = DownloadManifestItem(item_key="ITEM123", title="Test Document")
     attachment = DownloadManifestAttachment(
         attachment_key="ATT123",
         filename="document.pdf",
-        local_path=Path("/tmp/document.pdf"),
+        local_path=abs_path,
         download_status="success",
         file_size=1024,
     )

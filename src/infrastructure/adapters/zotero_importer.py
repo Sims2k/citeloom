@@ -63,8 +63,7 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
 
         if not library_id:
             raise ZoteroConnectionError(
-                "Zotero library_id not configured",
-                reason="ZOTERO_LIBRARY_ID environment variable or library_id config required",
+                "Zotero library_id not configured. ZOTERO_LIBRARY_ID environment variable or library_id config required",
             )
 
         # Try local API first if available, fallback to remote
@@ -93,8 +92,7 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
             api_key = zotero_config.get("api_key") or get_env("ZOTERO_API_KEY")
             if not api_key:
                 raise ZoteroConnectionError(
-                    "Zotero API key not configured for remote access",
-                    reason="ZOTERO_API_KEY environment variable or api_key config required",
+                    "Zotero API key not configured for remote access. ZOTERO_API_KEY environment variable or api_key config required",
                 )
 
             try:
@@ -106,7 +104,6 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
             except Exception as e:
                 raise ZoteroConnectionError(
                     f"Failed to initialize Zotero client: {e}",
-                    reason=str(e),
                 ) from e
 
         # Rate limiting state
@@ -196,7 +193,7 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
             ZoteroAPIError: If API call fails
         """
         if self.zot is None:
-            raise ZoteroConnectionError("Zotero client not initialized", reason="Client initialization failed")
+            raise ZoteroConnectionError("Zotero client not initialized. Client initialization failed")
 
         def _fetch_collections() -> list[dict[str, Any]]:
             self._rate_limit()
@@ -238,7 +235,7 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
             ZoteroAPIError: If API call fails
         """
         if self.zot is None:
-            raise ZoteroConnectionError("Zotero client not initialized", reason="Client initialization failed")
+            raise ZoteroConnectionError("Zotero client not initialized. Client initialization failed")
 
         def _fetch_items() -> Any:
             self._rate_limit()
@@ -295,7 +292,7 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
             ZoteroAPIError: If API call fails
         """
         if self.zot is None:
-            raise ZoteroConnectionError("Zotero client not initialized", reason="Client initialization failed")
+            raise ZoteroConnectionError("Zotero client not initialized. Client initialization failed")
 
         def _fetch_attachments() -> list[dict[str, Any]]:
             self._rate_limit()
@@ -352,7 +349,7 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
             ZoteroAPIError: If download fails after retries
         """
         if self.zot is None:
-            raise ZoteroConnectionError("Zotero client not initialized", reason="Client initialization failed")
+            raise ZoteroConnectionError("Zotero client not initialized. Client initialization failed")
 
         # Ensure output directory exists
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -451,7 +448,7 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
             ZoteroAPIError: If API call fails
         """
         if self.zot is None:
-            raise ZoteroConnectionError("Zotero client not initialized", reason="Client initialization failed")
+            raise ZoteroConnectionError("Zotero client not initialized. Client initialization failed")
 
         def _fetch_metadata() -> dict[str, Any]:
             self._rate_limit()
@@ -545,7 +542,7 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
             ZoteroAPIError: If API call fails
         """
         if self.zot is None:
-            raise ZoteroConnectionError("Zotero client not initialized", reason="Client initialization failed")
+            raise ZoteroConnectionError("Zotero client not initialized. Client initialization failed")
 
         def _fetch_tags() -> list[dict[str, Any]]:
             self._rate_limit()
@@ -581,7 +578,7 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
             ZoteroAPIError: If API call fails
         """
         if self.zot is None:
-            raise ZoteroConnectionError("Zotero client not initialized", reason="Client initialization failed")
+            raise ZoteroConnectionError("Zotero client not initialized. Client initialization failed")
 
         def _fetch_recent_items() -> list[dict[str, Any]]:
             self._rate_limit()
@@ -611,7 +608,7 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
             ZoteroAPIError: If API call fails
         """
         if self.zot is None:
-            raise ZoteroConnectionError("Zotero client not initialized", reason="Client initialization failed")
+            raise ZoteroConnectionError("Zotero client not initialized. Client initialization failed")
 
         try:
             collections = self.list_collections()

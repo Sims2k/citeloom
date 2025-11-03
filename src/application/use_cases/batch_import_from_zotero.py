@@ -650,6 +650,8 @@ def batch_import_from_zotero(
         if download_manifest:
             for item in download_manifest.get_successful_downloads():
                 total_attachments += len(item.get_pdf_attachments())
+            # Get items count from manifest
+            items_to_process = []  # Empty since we're using existing manifest
         
         logger.info(
             f"Using existing download manifest: {total_attachments} attachments ready",
