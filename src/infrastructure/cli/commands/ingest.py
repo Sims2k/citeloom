@@ -18,7 +18,7 @@ from src.application.ports.vector_index import VectorIndexPort
 from src.application.ports.checkpoint_manager import CheckpointManagerPort
 from src.application.ports.progress_reporter import ProgressReporterPort
 from src.infrastructure.adapters.checkpoint_manager import CheckpointManagerAdapter
-from src.infrastructure.adapters.docling_converter import DoclingConverterAdapter
+from src.infrastructure.adapters.docling_converter import DoclingConverterAdapter, get_converter
 from src.infrastructure.adapters.docling_chunker import DoclingHybridChunkerAdapter
 from src.infrastructure.adapters.fastembed_embeddings import FastEmbedAdapter
 from src.infrastructure.adapters.qdrant_index import QdrantIndexAdapter
@@ -199,7 +199,7 @@ def run(
         
         # Initialize adapters for batch import
         try:
-            converter: TextConverterPort = DoclingConverterAdapter()
+            converter: TextConverterPort = get_converter()
         except ImportError as e:
             typer.echo(f"Error: {e}", err=True)
             raise typer.Exit(1)
@@ -418,7 +418,7 @@ def run(
     
     # Initialize adapters (shared across all documents)
     try:
-        converter: TextConverterPort = DoclingConverterAdapter()
+        converter: TextConverterPort = get_converter()
     except ImportError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
@@ -700,7 +700,7 @@ def process_downloads(
     
     # Initialize adapters
     try:
-        converter: TextConverterPort = DoclingConverterAdapter()
+        converter: TextConverterPort = get_converter()
     except ImportError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)

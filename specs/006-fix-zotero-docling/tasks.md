@@ -132,16 +132,16 @@
 
 ### Tests for User Story 4
 
-- [ ] T037 [P] [US4] Add test for converter factory returning same instance on multiple calls in `tests/integration/test_resource_factory.py`
-- [ ] T038 [P] [US4] Add test for converter reuse across multiple CLI commands in same process in `tests/integration/test_resource_factory.py`
+- [X] T037 [P] [US4] Add test for converter factory returning same instance on multiple calls in `tests/integration/test_resource_factory.py`
+- [X] T038 [P] [US4] Add test for converter reuse across multiple CLI commands in same process in `tests/integration/test_resource_factory.py`
 
 ### Implementation for User Story 4
 
-- [ ] T039 [US4] Implement module-level cache `_converter_cache` dictionary in `src/infrastructure/adapters/docling_converter.py`
-- [ ] T040 [US4] Implement `get_converter()` factory function returning cached instance in `src/infrastructure/adapters/docling_converter.py`
-- [ ] T041 [US4] Update `ingest run` command to use `get_converter()` factory instead of direct instantiation in `src/infrastructure/cli/commands/ingest.py`
-- [ ] T042 [US4] Update MCP tools to use `get_converter()` factory in `src/infrastructure/mcp/tools.py` (if applicable)
-- [ ] T043 [US4] Verify process-scoped lifetime (no inactivity-based cleanup, only process termination)
+- [X] T039 [US4] Implement module-level cache `_converter_cache` dictionary in `src/infrastructure/adapters/docling_converter.py`
+- [X] T040 [US4] Implement `get_converter()` factory function returning cached instance in `src/infrastructure/adapters/docling_converter.py`
+- [X] T041 [US4] Update `ingest run` command to use `get_converter()` factory instead of direct instantiation in `src/infrastructure/cli/commands/ingest.py`
+- [X] T042 [US4] Update MCP tools to use `get_converter()` factory in `src/infrastructure/mcp/tools.py` (if applicable)
+- [X] T043 [US4] Verify process-scoped lifetime (no inactivity-based cleanup, only process termination)
 - [ ] T044a [US4] [P] [FR-017] Implement module-level cache `_embedding_model_cache` dictionary in `src/infrastructure/adapters/fastembed_embeddings.py`
 - [ ] T044b [US4] [FR-017] Implement `get_embedding_model()` factory function returning cached instance in `src/infrastructure/adapters/fastembed_embeddings.py` (Note: Can be deferred if embedding model reuse is not critical for MVP)
 

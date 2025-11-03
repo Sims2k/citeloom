@@ -15,7 +15,7 @@ from ...application.dto.query import QueryRequest, QueryResult
 from ...application.use_cases.ingest_document import ingest_document
 from ...application.use_cases.query_chunks import query_chunks
 from ...domain.errors import EmbeddingModelMismatch, HybridNotSupported, ProjectNotFound
-from ...infrastructure.adapters.docling_converter import DoclingConverterAdapter
+from ...infrastructure.adapters.docling_converter import DoclingConverterAdapter, get_converter
 from ...infrastructure.adapters.docling_chunker import DoclingHybridChunkerAdapter
 from ...infrastructure.adapters.fastembed_embeddings import FastEmbedAdapter
 from ...infrastructure.adapters.qdrant_index import QdrantIndexAdapter
@@ -330,7 +330,7 @@ async def handle_ingest_from_source(arguments: dict[str, Any], settings: Setting
             )
         
         # Initialize adapters for batch import
-        converter = DoclingConverterAdapter()
+        converter = get_converter()
         chunker = DoclingHybridChunkerAdapter()
         resolver = ZoteroPyzoteroResolver(zotero_config=zotero_config)
         embedder = FastEmbedAdapter(default_model=project_settings.embedding_model)
@@ -404,7 +404,7 @@ async def handle_ingest_from_source(arguments: dict[str, Any], settings: Setting
     force_rebuild = options.get("force_rebuild", False)
     
     # Initialize adapters
-    converter = DoclingConverterAdapter()
+    converter = get_converter()
     chunker = DoclingHybridChunkerAdapter()
     embedder = FastEmbedAdapter()
     index = QdrantIndexAdapter(

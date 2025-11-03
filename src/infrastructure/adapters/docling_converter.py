@@ -226,232 +226,6 @@ class DoclingConverterAdapter:
                 exc_info=True,
             )
             raise
-
-
-def get_converter(config_hash: str | None = None) -> DoclingConverterAdapter:
-    """
-    Get or create shared DoclingConverterAdapter instance (process-scoped).
-    
-    This factory function implements a singleton pattern with module-level cache
-    to avoid reinitialization overhead on subsequent commands in the same process.
-    
-    Args:
-        config_hash: Optional configuration hash for variant instances
-            (default: "default" for single instance)
-    
-    Returns:
-        DoclingConverterAdapter instance (shared across process lifetime)
-    
-    Behavior:
-        - First call: Creates new DoclingConverterAdapter, caches it, returns instance
-        - Subsequent calls: Returns cached instance (no reinitialization overhead)
-        - Cache key: f"converter:{config_hash or 'default'}"
-        - Lifetime: Process-scoped (cleared only on process termination)
-    
-    Thread Safety:
-        - Module-level cache is safe for single-user CLI (no concurrent access expected)
-        - No locking required for single-threaded CLI operations
-    
-    Raises:
-        ImportError: If Docling is not available (Windows compatibility)
-    """
-    cache_key = f"converter:{config_hash or 'default'}"
-    
-    if cache_key not in _converter_cache:
-        logger.debug(f"Creating new converter instance (cache_key={cache_key})")
-        _converter_cache[cache_key] = DoclingConverterAdapter()
-    else:
-        logger.debug(f"Reusing cached converter instance (cache_key={cache_key})")
-    
-    return _converter_cache[cache_key]
-
-
-class DoclingConverterAdapter:
-    """Adapter for Docling document conversion (optional on Windows)."""
-
-    # Default OCR languages (priority: Zotero metadata → explicit config → default)
-    DEFAULT_OCR_LANGUAGES = ['en', 'de']
-    
-    # Timeout limits (from spec clarifications)
-    DOCUMENT_TIMEOUT_SECONDS = 120
-    PAGE_TIMEOUT_SECONDS = 10
-    
-    def __init__(self):
-        if not DOCLING_AVAILABLE:
-            raise ImportError(
-                "Docling is not available on Windows (Python 3.12). "
-                "deepsearch-glm dependency lacks Windows wheels for Python 3.12. "
-                "Windows users should either:\n"
-                "1. Use WSL (Windows Subsystem for Linux)\n"
-                "2. Use Python 3.11 (not recommended - project requires 3.12)\n"
-                "3. Wait for Windows support from docling/deepsearch-glm"
-            )
-        
-        # Initialize DocumentConverter with OCR support
-        self._initialize_converter()
-    
-    def _initialize_converter(self) -> None:
-        """Initialize DocumentConverter with OCR configuration."""
-        try:
-            logger.info("Initializing Docling DocumentConverter (this may take a moment on first run while models are downloaded)...")
-            
-            # Check for model cache directory to show user if models are cached
-            import os
-            from pathlib import Path
-            
-            # Docling stores models in ~/.cache/docling/models by default
-            cache_dir = Path.home() / ".cache" / "docling" / "models"
-            if cache_dir.exists():
-                model_count = len(list(cache_dir.rglob("*.onnx"))) + len(list(cache_dir.rglob("*.bin"))) + len(list(cache_dir.rglob("*.pt")))
-                if model_count > 0:
-                    logger.info(f"Found {model_count} cached model files in {cache_dir}. Using cached models.")
-                else:
-                    logger.info(f"Model cache directory exists but appears empty. Models will be downloaded on first use.")
-            else:
-                logger.info(f"Model cache directory not found. Models will be downloaded to {cache_dir} on first use.")
-            
-            # Configure pipeline options with OCR enabled (if available)
-            # Docling v2 supports OCR via Tesseract/RapidOCR
-            # If pipeline options are not available, use default converter
-            logger.info("Configuring Docling pipeline options...")
-            if DoclingPipelineOptions:
-                pipeline_options = DoclingPipelineOptions()
-                
-                # Enable OCR for scanned documents
-                # Note: Docling automatically detects if OCR is needed
-                # We configure OCR languages via pipeline options
-                if PdfPipelineOptions:
-                    pdf_options = PdfPipelineOptions()
-                    # Enable OCR detection and processing
-                    pipeline_options.pdf = pdf_options
-                
-                logger.info("Creating DocumentConverter instance (this may take 10-30 seconds on first run)...")
-                self.converter = DocumentConverter(
-                    pipeline_options=pipeline_options,
-                    # Allow common formats: PDF, DOCX, PPTX, HTML, images
-                )
-            else:
-                # Fallback: initialize without pipeline options
-                logger.info("Creating DocumentConverter instance (this may take 10-30 seconds on first run)...")
-                self.converter = DocumentConverter()
-            
-            logger.info("DocumentConverter initialized successfully with OCR support")
-        except Exception as e:
-            logger.error(f"Failed to initialize DocumentConverter: {e}", exc_info=True)
-            raise
-    
-    def _select_ocr_languages(
-        self,
-        ocr_languages: list[str] | None = None,
-    ) -> list[str]:
-        """
-        Select OCR languages with priority:
-        1. Explicit ocr_languages parameter
-        2. Default ['en', 'de']
-        
-        Note: Zotero metadata language should be passed via ocr_languages parameter
-        by the caller (use case layer).
-        
-        Args:
-            ocr_languages: Optional explicit OCR language codes
-        
-        Returns:
-            List of OCR language codes for Docling
-        """
-        if ocr_languages:
-            # Normalize language codes (e.g., 'en-US' → 'en')
-            normalized = []
-            for lang in ocr_languages:
-                # Extract base language code (e.g., 'en' from 'en-US')
-                base_lang = lang.split('-')[0].lower()
-                if base_lang not in normalized:
-                    normalized.append(base_lang)
-            return normalized if normalized else self.DEFAULT_OCR_LANGUAGES
-        
-        return self.DEFAULT_OCR_LANGUAGES
-    
-    def _configure_ocr(self, languages: list[str]) -> None:
-        """
-        Configure OCR with Tesseract/RapidOCR for scanned documents.
-        
-        Args:
-            languages: OCR language codes (e.g., ['en', 'de'])
-        
-        Note:
-            Docling automatically detects when OCR is needed.
-            Language configuration may be done via pipeline options or converter settings.
-        """
-        # Docling v2 handles OCR configuration internally
-        # We ensure languages are available for OCR engine selection
-        logger.debug(f"OCR configured with languages: {languages}")
-    
-    def _timeout_handler(self, signum: int, frame: Any) -> None:
-        """Signal handler for timeout enforcement."""
-        # T103: Enhanced diagnostic information in timeout handler
-        raise TimeoutError(
-            f"Document conversion exceeded {self.DOCUMENT_TIMEOUT_SECONDS}s timeout. "
-            f"Page timeout limit: {self.PAGE_TIMEOUT_SECONDS}s per page."
-        )
-    
-    def _convert_with_timeout(self, source_path: str) -> Any:
-        """
-        Convert document with timeout enforcement.
-        
-        Args:
-            source_path: Path to source document
-        
-        Returns:
-            Docling conversion result
-        
-        Raises:
-            TimeoutError: If conversion exceeds timeout
-        """
-        # Note: Signal-based timeouts work on Unix/Linux
-        # On Windows, we rely on Docling's internal timeouts or thread-based timeouts
-        if sys.platform != "win32":
-            # Set alarm for document-level timeout
-            signal.signal(signal.SIGALRM, self._timeout_handler)
-            signal.alarm(self.DOCUMENT_TIMEOUT_SECONDS)
-        
-        try:
-            # Perform conversion
-            result = self.converter.convert(source_path)
-            
-            if sys.platform != "win32":
-                signal.alarm(0)  # Cancel alarm
-            
-            return result
-        except TimeoutError:
-            # T103: Enhanced diagnostic logging for timeout failures at conversion level
-            logger.error(
-                f"Document conversion timeout after {self.DOCUMENT_TIMEOUT_SECONDS}s: {source_path}",
-                extra={
-                    "source_path": source_path,
-                    "timeout_seconds": self.DOCUMENT_TIMEOUT_SECONDS,
-                    "page_timeout_seconds": self.PAGE_TIMEOUT_SECONDS,
-                    "diagnostic": "Document-level timeout occurred. This may indicate: "
-                                  "1. Document is extremely large (>1000 pages), "
-                                  "2. Complex document structure requiring extensive processing, "
-                                  "3. Resource constraints (CPU/memory). "
-                                  "Consider splitting document or increasing timeout if system allows.",
-                },
-            )
-            raise
-        except Exception as e:
-            if sys.platform != "win32":
-                signal.alarm(0)  # Cancel alarm on error
-            # T103: Enhanced diagnostic logging for conversion failures
-            logger.error(
-                f"Document conversion failed during processing: {e}",
-                extra={
-                    "source_path": source_path,
-                    "timeout_seconds": self.DOCUMENT_TIMEOUT_SECONDS,
-                    "diagnostic": "Conversion error occurred during document processing. "
-                                  "Check document format, corruption, or system resources.",
-                },
-                exc_info=True,
-            )
-            raise
     
     def _extract_page_map(self, doc: Any, plain_text: str) -> dict[int, tuple[int, int]]:
         """
@@ -1138,3 +912,41 @@ class DoclingConverterAdapter:
                 exc_info=True,
             )
             raise
+
+
+def get_converter(config_hash: str | None = None) -> DoclingConverterAdapter:
+    """
+    Get or create shared DoclingConverterAdapter instance (process-scoped).
+    
+    This factory function implements a singleton pattern with module-level cache
+    to avoid reinitialization overhead on subsequent commands in the same process.
+    
+    Args:
+        config_hash: Optional configuration hash for variant instances
+            (default: "default" for single instance)
+    
+    Returns:
+        DoclingConverterAdapter instance (shared across process lifetime)
+    
+    Behavior:
+        - First call: Creates new DoclingConverterAdapter, caches it, returns instance
+        - Subsequent calls: Returns cached instance (no reinitialization overhead)
+        - Cache key: f"converter:{config_hash or 'default'}"
+        - Lifetime: Process-scoped (cleared only on process termination)
+    
+    Thread Safety:
+        - Module-level cache is safe for single-user CLI (no concurrent access expected)
+        - No locking required for single-threaded CLI operations
+    
+    Raises:
+        ImportError: If Docling is not available (Windows compatibility)
+    """
+    cache_key = f"converter:{config_hash or 'default'}"
+    
+    if cache_key not in _converter_cache:
+        logger.debug(f"Creating new converter instance (cache_key={cache_key})")
+        _converter_cache[cache_key] = DoclingConverterAdapter()
+    else:
+        logger.debug(f"Reusing cached converter instance (cache_key={cache_key})")
+    
+    return _converter_cache[cache_key]
