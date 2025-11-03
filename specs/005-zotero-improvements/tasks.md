@@ -218,11 +218,11 @@
 
 ### Implementation for User Story 7
 
-- [ ] T094 [US7] Enhance chunk payload creation to include zotero.item_key and zotero.attachment_key fields in ingest_document use case in src/application/use_cases/ingest_document.py
-- [ ] T095 [US7] Create keyword indexes on both zotero.item_key and zotero.attachment_key fields together in QdrantIndexAdapter.ensure_collection() in src/infrastructure/adapters/qdrant_index.py (both indexes created in single operation)
-- [ ] T096 [US7] Implement query filtering by zotero.item_key or zotero.attachment_key in QueryChunks use case or QdrantIndexAdapter search methods to enable FR-029 filtered queries in src/application/use_cases/query_chunks.py or src/infrastructure/adapters/qdrant_index.py
-- [ ] T097 [US7] Pass zotero.item_key and zotero.attachment_key from batch_import_from_zotero to ingest_document use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T098 [US7] Ensure zotero keys are included in annotation payloads as well in AnnotationResolver in src/infrastructure/adapters/zotero_annotation_resolver.py
+- [X] T094 [US7] Enhance chunk payload creation to include zotero.item_key and zotero.attachment_key fields in ingest_document use case in src/application/use_cases/ingest_document.py
+- [X] T095 [US7] Create keyword indexes on both zotero.item_key and zotero.attachment_key fields together in QdrantIndexAdapter.ensure_collection() in src/infrastructure/adapters/qdrant_index.py (both indexes created in single operation)
+- [X] T096 [US7] Implement query filtering by zotero.item_key or zotero.attachment_key in QueryChunks use case or QdrantIndexAdapter search methods to enable FR-029 filtered queries in src/application/use_cases/query_chunks.py or src/infrastructure/adapters/qdrant_index.py
+- [X] T097 [US7] Pass zotero.item_key and zotero.attachment_key from batch_import_from_zotero to ingest_document use case in src/application/use_cases/batch_import_from_zotero.py
+- [X] T098 [US7] Ensure zotero keys are included in annotation payloads as well in AnnotationResolver in src/infrastructure/adapters/zotero_annotation_resolver.py
 
 **Checkpoint**: At this point, User Stories 1-7 should all work independently
 

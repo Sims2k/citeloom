@@ -35,6 +35,7 @@ def ingest_document(
     fulltext_resolver: FulltextResolverPort | None = None,
     attachment_key: str | None = None,
     prefer_zotero_fulltext: bool = True,
+    item_key: str | None = None,
 ) -> IngestResult:
     """
     Orchestrate document ingestion: convert → chunk → metadata → embed → upsert → audit.
@@ -54,6 +55,7 @@ def ingest_document(
         fulltext_resolver: Optional FulltextResolverPort for Zotero fulltext reuse
         attachment_key: Optional Zotero attachment key for fulltext lookup
         prefer_zotero_fulltext: If True, prefer Zotero fulltext when available (default: True)
+        item_key: Optional Zotero item key for traceability (T094)
     
     Returns:
         IngestResult with chunks_written, documents_processed, duration_seconds, embed_model, warnings
@@ -349,6 +351,10 @@ def ingest_document(
             "embedding": vec,
             "embed_model": model_id,
         }
+        # T094: Add zotero.item_key and zotero.attachment_key fields for traceability
+        if item_key or attachment_key:
+            store_item["zotero_item_key"] = item_key
+            store_item["zotero_attachment_key"] = attachment_key
         to_store.append(store_item)
     
     # Step 6: Upsert to vector index

@@ -823,6 +823,36 @@ def batch_import_from_zotero(
             
             document_index += 1
             
+            # Create fulltext resolver if prefer_zotero_fulltext is enabled
+            fulltext_resolver_instance = None
+            if prefer_zotero_fulltext:
+                try:
+                    from ...infrastructure.adapters.zotero_fulltext_resolver import ZoteroFulltextResolverAdapter
+                    from ...infrastructure.adapters.zotero_local_db import LocalZoteroDbAdapter
+                    
+                    # Try to create local DB adapter for fulltext resolver
+                    local_db = None
+                    if zotero_local_db_path or zotero_storage_dir:
+                        try:
+                            local_db = LocalZoteroDbAdapter(
+                                db_path=zotero_local_db_path,
+                                storage_dir=zotero_storage_dir,
+                            )
+                        except Exception:
+                            # Local adapter not available, fulltext resolver will use converter fallback
+                            pass
+                    
+                    # Create fulltext resolver with local DB and converter
+                    fulltext_resolver_instance = ZoteroFulltextResolverAdapter(
+                        local_db_adapter=local_db,
+                        converter=converter,
+                    )
+                except Exception as e:
+                    logger.debug(
+                        f"Failed to create fulltext resolver: {e}. Continuing without fulltext reuse.",
+                        extra={"correlation_id": correlation_id},
+                    )
+            
             try:
                 # Update checkpoint: marking as converting
                 if checkpoint:
@@ -837,6 +867,7 @@ def batch_import_from_zotero(
                         logger.warning(warning_msg, extra={"correlation_id": correlation_id}, exc_info=True)
                 
                 # Process document through ingest pipeline
+                # T097: Pass zotero.item_key and zotero.attachment_key to ingest_document
                 result: IngestResult = ingest_document(
                     request=ingest_request,
                     converter=converter,
@@ -849,6 +880,10 @@ def batch_import_from_zotero(
                     progress_reporter=progress_reporter,
                     document_index=document_index,
                     total_documents=total_attachments,
+                    fulltext_resolver=fulltext_resolver_instance,
+                    attachment_key=attachment.attachment_key,
+                    prefer_zotero_fulltext=prefer_zotero_fulltext,
+                    item_key=item_key,
                 )
                 
                 total_chunks += result.chunks_written
@@ -1802,6 +1837,34 @@ def process_downloaded_files(
             
             document_index += 1
             
+            # Create fulltext resolver if prefer_zotero_fulltext is enabled
+            # Note: prefer_zotero_fulltext defaults to True for process_downloaded_files helper
+            prefer_zotero_fulltext_val = True  # Default for process_downloaded_files
+            fulltext_resolver_instance = None
+            if prefer_zotero_fulltext_val:
+                try:
+                    from ...infrastructure.adapters.zotero_fulltext_resolver import ZoteroFulltextResolverAdapter
+                    from ...infrastructure.adapters.zotero_local_db import LocalZoteroDbAdapter
+                    
+                    # Try to create local DB adapter for fulltext resolver
+                    local_db = None
+                    try:
+                        local_db = LocalZoteroDbAdapter()
+                    except Exception:
+                        # Local adapter not available, fulltext resolver will use converter fallback
+                        pass
+                    
+                    # Create fulltext resolver with local DB and converter
+                    fulltext_resolver_instance = ZoteroFulltextResolverAdapter(
+                        local_db_adapter=local_db,
+                        converter=converter,
+                    )
+                except Exception as e:
+                    logger.debug(
+                        f"Failed to create fulltext resolver: {e}. Continuing without fulltext reuse.",
+                        extra={"correlation_id": correlation_id},
+                    )
+            
             try:
                 # Update checkpoint: marking as converting
                 if checkpoint:
@@ -1815,6 +1878,7 @@ def process_downloaded_files(
                         logger.warning(warning_msg, extra={"correlation_id": correlation_id}, exc_info=True)
                 
                 # Process document through ingest pipeline
+                # T097: Pass zotero.item_key and zotero.attachment_key to ingest_document
                 result: IngestResult = ingest_document(
                     request=ingest_request,
                     converter=converter,
@@ -1827,6 +1891,10 @@ def process_downloaded_files(
                     progress_reporter=progress_reporter,
                     document_index=document_index,
                     total_documents=total_attachments,
+                    fulltext_resolver=fulltext_resolver_instance,
+                    attachment_key=attachment.attachment_key,
+                    prefer_zotero_fulltext=prefer_zotero_fulltext_val,
+                    item_key=item_key,
                 )
                 
                 total_chunks += result.chunks_written

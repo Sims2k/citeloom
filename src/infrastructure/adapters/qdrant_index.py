@@ -340,6 +340,10 @@ class QdrantIndexAdapter:
             # Qdrant's create_payload_index method creates indexes for fast filtering
             keyword_fields = ["project_id", "doc_id", "citekey", "year", "tags"]
             
+            # T095: Add keyword indexes on zotero.item_key and zotero.attachment_key
+            # Note: These are nested fields, so we index them as nested paths
+            zotero_key_fields = ["zotero.item_key", "zotero.attachment_key"]
+            
             for field_name in keyword_fields:
                 try:
                     # Create keyword index using create_payload_index
@@ -358,6 +362,32 @@ class QdrantIndexAdapter:
                         )
                     else:
                         # Fallback: Qdrant may auto-index fields used in filters
+                        logger.debug(
+                            f"Payload index creation skipped (auto-index may apply): '{field_name}'",
+                            extra={"collection_name": collection_name, "field_name": field_name},
+                        )
+                except Exception as idx_error:
+                    # Some Qdrant versions auto-index keyword fields
+                    logger.debug(
+                        f"Keyword index creation attempted for '{field_name}' (may auto-index): {idx_error}",
+                        extra={"collection_name": collection_name, "field_name": field_name},
+                    )
+            
+            # T095: Create keyword indexes on zotero.item_key and zotero.attachment_key
+            for field_name in zotero_key_fields:
+                try:
+                    if PayloadSchemaType is not None:
+                        from qdrant_client.models import PayloadSchemaType as PST
+                        self._client.create_payload_index(
+                            collection_name=collection_name,
+                            field_name=field_name,
+                            field_schema=PST.KEYWORD,
+                        )
+                        logger.debug(
+                            f"Created keyword index on '{field_name}' for collection '{collection_name}'",
+                            extra={"collection_name": collection_name, "field_name": field_name},
+                        )
+                    else:
                         logger.debug(
                             f"Payload index creation skipped (auto-index may apply): '{field_name}'",
                             extra={"collection_name": collection_name, "field_name": field_name},
@@ -540,6 +570,7 @@ class QdrantIndexAdapter:
             
             # Add citation metadata if available (from Zotero)
             citation = item.get("citation")
+            zotero_data: dict[str, Any] = {}
             if citation:
                 if isinstance(citation, dict):
                     # Map citation fields to payload schema
@@ -549,10 +580,21 @@ class QdrantIndexAdapter:
                     payload["authors"] = citation.get("authors", [])
                     payload["title"] = citation.get("title", "")
                     payload["tags"] = citation.get("tags", [])
-                    # Legacy zotero field for backward compatibility
-                    payload["zotero"] = citation
+                    # Preserve citation metadata in zotero field
+                    zotero_data.update(citation)
                 else:
-                    payload["zotero"] = citation
+                    zotero_data = citation if isinstance(citation, dict) else {}
+            
+            # T094: Add zotero.item_key and zotero.attachment_key fields for traceability
+            zotero_item_key = item.get("zotero_item_key")
+            zotero_attachment_key = item.get("zotero_attachment_key")
+            if zotero_item_key or zotero_attachment_key:
+                zotero_data["item_key"] = zotero_item_key
+                zotero_data["attachment_key"] = zotero_attachment_key
+            
+            # Set zotero payload if we have any data
+            if zotero_data:
+                payload["zotero"] = zotero_data
             
             # Create point with named vector 'dense'
             # Note: Sparse vectors would be generated during query time via model binding
@@ -721,6 +763,23 @@ class QdrantIndexAdapter:
                     # Section prefix filter would use a text matching approach
                     # For now, we'll skip it as Qdrant doesn't have direct prefix matching on arrays
                     pass
+                
+                # T096: Support filtering by zotero.item_key or zotero.attachment_key
+                if "zotero_item_key" in filters and filters["zotero_item_key"]:
+                    filter_conditions.append(
+                        FieldCondition(
+                            key="zotero.item_key",
+                            match=MatchValue(value=filters["zotero_item_key"]),
+                        )
+                    )
+                
+                if "zotero_attachment_key" in filters and filters["zotero_attachment_key"]:
+                    filter_conditions.append(
+                        FieldCondition(
+                            key="zotero.attachment_key",
+                            match=MatchValue(value=filters["zotero_attachment_key"]),
+                        )
+                    )
                 
                 qdrant_filter = Filter(must=filter_conditions)
             
@@ -1009,6 +1068,23 @@ class QdrantIndexAdapter:
                         FieldCondition(
                             key="year",
                             match=MatchValue(value=filters["year"]),
+                        )
+                    )
+                
+                # T096: Support filtering by zotero.item_key or zotero.attachment_key
+                if "zotero_item_key" in filters and filters["zotero_item_key"]:
+                    filter_conditions.append(
+                        FieldCondition(
+                            key="zotero.item_key",
+                            match=MatchValue(value=filters["zotero_item_key"]),
+                        )
+                    )
+                
+                if "zotero_attachment_key" in filters and filters["zotero_attachment_key"]:
+                    filter_conditions.append(
+                        FieldCondition(
+                            key="zotero.attachment_key",
+                            match=MatchValue(value=filters["zotero_attachment_key"]),
                         )
                     )
                 
