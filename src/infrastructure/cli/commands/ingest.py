@@ -50,6 +50,7 @@ def run(
     keep_checkpoints: bool = typer.Option(False, help="Explicitly keep checkpoint files (default: retain checkpoints). Mutually exclusive with --cleanup-checkpoints."),
     prefer_zotero_fulltext: bool = typer.Option(True, help="Prefer Zotero fulltext when available (default: True). Set to False to always use Docling conversion."),
     include_annotations: bool = typer.Option(False, help="Extract and index PDF annotations from Zotero (default: False). Only valid with --zotero-collection."),
+    zotero_source_mode: str | None = typer.Option(None, help="Zotero source routing mode: 'local-first', 'web-first', 'auto', 'local-only', 'web-only' (default: from settings or 'web-first' for backward compatibility). Only valid with --zotero-collection."),
 ):
     """
     Ingest documents into a project-scoped collection.
@@ -89,6 +90,21 @@ def run(
     # Validate include_annotations flag (only valid for Zotero imports)
     if include_annotations and not zotero_collection:
         typer.echo("Error: --include-annotations is only valid with --zotero-collection", err=True)
+        raise typer.Exit(1)
+    
+    # Validate zotero_source_mode flag (only valid for Zotero imports)
+    if zotero_source_mode and not zotero_collection:
+        typer.echo("Error: --zotero-source-mode is only valid with --zotero-collection", err=True)
+        raise typer.Exit(1)
+    
+    # Validate zotero_source_mode value if provided
+    valid_modes = {"local-first", "web-first", "auto", "local-only", "web-only"}
+    if zotero_source_mode and zotero_source_mode not in valid_modes:
+        typer.echo(
+            f"Error: Invalid zotero_source_mode '{zotero_source_mode}'. "
+            f"Must be one of: {', '.join(sorted(valid_modes))}",
+            err=True,
+        )
         raise typer.Exit(1)
     
     # Parse tag filters (comma-separated lists)
@@ -242,6 +258,24 @@ def run(
             # CLI option overrides settings
             prefer_zotero_fulltext_value = prefer_zotero_fulltext
         
+        # Get zotero_source_mode from CLI or settings (default: web-first for backward compatibility)
+        zotero_source_mode_value: str | None = zotero_source_mode
+        if not zotero_source_mode_value:
+            # Use from settings if available
+            if hasattr(settings.zotero, "mode") and settings.zotero.mode:
+                zotero_source_mode_value = settings.zotero.mode
+            else:
+                # Default to web-first for backward compatibility
+                zotero_source_mode_value = "web-first"
+        
+        # Get local DB paths from settings
+        zotero_local_db_path: Path | None = None
+        zotero_storage_dir: Path | None = None
+        if hasattr(settings.zotero, "db_path") and settings.zotero.db_path:
+            zotero_local_db_path = Path(settings.zotero.db_path)
+        if hasattr(settings.zotero, "storage_dir") and settings.zotero.storage_dir:
+            zotero_storage_dir = Path(settings.zotero.storage_dir)
+        
         try:
             result = batch_import_from_zotero(
                 project_id=project,
@@ -266,6 +300,9 @@ def run(
                 prefer_zotero_fulltext=prefer_zotero_fulltext_value,
                 include_annotations=include_annotations_value,
                 annotation_resolver=annotation_resolver,
+                zotero_source_mode=zotero_source_mode_value,  # type: ignore[arg-type]
+                zotero_local_db_path=zotero_local_db_path,
+                zotero_storage_dir=zotero_storage_dir,
             )
             
             # Cleanup logic: delete checkpoint and manifest if --cleanup-checkpoints is set

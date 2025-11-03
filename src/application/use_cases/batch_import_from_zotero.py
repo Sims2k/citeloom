@@ -27,6 +27,7 @@ from ..ports.metadata_resolver import MetadataResolverPort
 from ..ports.progress_reporter import ProgressReporterPort
 from ..ports.vector_index import VectorIndexPort
 from ..ports.zotero_importer import ZoteroImporterPort
+from ..services.zotero_source_router import Strategy, ZoteroSourceRouter
 from ..use_cases.ingest_document import ingest_document
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,9 @@ def batch_import_from_zotero(
     prefer_zotero_fulltext: bool = True,
     include_annotations: bool = False,
     annotation_resolver: AnnotationResolverPort | None = None,
+    zotero_source_mode: Strategy | None = None,
+    zotero_local_db_path: Path | None = None,
+    zotero_storage_dir: Path | None = None,
 ) -> dict[str, Any]:
     """
     Orchestrate batch import of documents from Zotero collection.
@@ -90,6 +94,9 @@ def batch_import_from_zotero(
         prefer_zotero_fulltext: Whether to prefer Zotero fulltext when available
         include_annotations: Whether to extract and index PDF annotations (default False)
         annotation_resolver: Optional AnnotationResolverPort for annotation extraction (required if include_annotations=True)
+        zotero_source_mode: Optional source routing strategy ("local-first", "web-first", "auto", "local-only", "web-only")
+        zotero_local_db_path: Optional path to Zotero database file (for local adapter)
+        zotero_storage_dir: Optional path to Zotero storage directory (for local adapter)
     
     Returns:
         Dict with:
@@ -127,6 +134,44 @@ def batch_import_from_zotero(
     # Validate required adapters
     if not zotero_importer:
         raise ValueError("zotero_importer adapter required")
+    
+    # Create source router if mode is specified
+    source_router: ZoteroSourceRouter | None = None
+    if zotero_source_mode:
+        local_adapter = None
+        # Try to create local adapter if mode requires it
+        if zotero_source_mode in ("local-first", "auto", "local-only"):
+            try:
+                from ...infrastructure.adapters.zotero_local_db import LocalZoteroDbAdapter
+                
+                local_adapter = LocalZoteroDbAdapter(
+                    db_path=zotero_local_db_path,
+                    storage_dir=zotero_storage_dir,
+                )
+                logger.info(
+                    "Local Zotero adapter created for source routing",
+                    extra={"mode": zotero_source_mode, "correlation_id": correlation_id},
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to create local adapter, router will use web-only: {e}",
+                    extra={"mode": zotero_source_mode, "correlation_id": correlation_id, "error": str(e)},
+                )
+                if zotero_source_mode == "local-only":
+                    raise ValueError(
+                        f"Local-only strategy requires local adapter but creation failed: {e}"
+                    ) from e
+                # For other modes, continue without local adapter
+        
+        source_router = ZoteroSourceRouter(
+            local_adapter=local_adapter,
+            web_adapter=zotero_importer,
+            strategy=zotero_source_mode,
+        )
+        # Use router instead of direct importer
+        # Router implements ZoteroImporterPort interface, so this is type-safe
+        zotero_importer = source_router  # type: ignore[assignment]
+    
     if not converter:
         raise ValueError("converter adapter required")
     if not chunker:
@@ -484,13 +529,23 @@ def batch_import_from_zotero(
                     output_path = collection_downloads_dir / f"{stem}_{counter}.pdf"
                     counter += 1
                 
-                # Download attachment
+                # Download attachment (with source routing if router is used)
+                source_marker: str | None = None
                 try:
-                    downloaded_path = zotero_importer.download_attachment(
-                        item_key=item_key,
-                        attachment_key=attachment_key,
-                        output_path=output_path,
-                    )
+                    if source_router:
+                        # Router returns (file_path, source_marker) tuple
+                        downloaded_path, source_marker = source_router.download_attachment(
+                            item_key=item_key,
+                            attachment_key=attachment_key,
+                            output_path=output_path,
+                        )
+                    else:
+                        # Direct adapter returns just file_path
+                        downloaded_path = zotero_importer.download_attachment(
+                            item_key=item_key,
+                            attachment_key=attachment_key,
+                            output_path=output_path,
+                        )
                     
                     file_size = downloaded_path.stat().st_size if downloaded_path.exists() else None
                     
@@ -533,6 +588,7 @@ def batch_import_from_zotero(
                         download_status="success",
                         file_size=file_size,
                         content_fingerprint=content_fingerprint,
+                        source=source_marker,  # Store source marker ("local" | "web")
                     )
                     
                     total_attachments += 1

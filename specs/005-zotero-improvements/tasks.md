@@ -174,20 +174,20 @@
 
 ### Implementation for User Story 5
 
-- [ ] T076 [US5] Create ZoteroSourceRouter application service class in src/application/services/zotero_source_router.py
-- [ ] T077 [US5] Implement ZoteroSourceRouter.__init__() accepting local_adapter, web_adapter, and strategy mode in src/application/services/zotero_source_router.py
-- [ ] T078 [US5] Implement local-first strategy with per-file fallback to Web API in src/application/services/zotero_source_router.py
-- [ ] T079 [US5] Implement web-first strategy with fallback to local DB on rate limits in src/application/services/zotero_source_router.py
-- [ ] T080 [US5] Implement auto strategy with intelligent source selection: prefer local if DB available and files exist locally, prefer web if local unavailable or files missing, smart selection based on speed and completeness with automatic fallback, logging selection strategy used (see FR-024)
-- [ ] T081 [US5] Implement local-only strict mode (no fallback) in src/application/services/zotero_source_router.py
-- [ ] T082 [US5] Implement web-only strict mode (no fallback, backward compatible) in src/application/services/zotero_source_router.py
-- [ ] T083 [US5] Implement ZoteroSourceRouter.download_attachment() returning (file_path, source_marker) tuple in src/application/services/zotero_source_router.py
-- [ ] T084 [US5] Implement ZoteroSourceRouter.list_collections() with strategy-based routing in src/application/services/zotero_source_router.py
-- [ ] T085 [US5] Implement ZoteroSourceRouter.get_collection_items() with strategy-based routing in src/application/services/zotero_source_router.py
-- [ ] T086 [US5] Integrate ZoteroSourceRouter into batch_import_from_zotero use case replacing direct adapter usage in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T087 [US5] Store source markers ("local" | "web") in DownloadManifestAttachment.source field in batch_import_from_zotero use case in src/application/use_cases/batch_import_from_zotero.py
-- [ ] T088 [US5] Add mode configuration option (local-first, web-first, auto, local-only, web-only) to Settings in src/infrastructure/config/settings.py
-- [ ] T089 [US5] Add mode CLI option to ingest command with default web-first for backward compatibility in src/infrastructure/cli/commands/ingest.py
+- [X] T076 [US5] Create ZoteroSourceRouter application service class in src/application/services/zotero_source_router.py
+- [X] T077 [US5] Implement ZoteroSourceRouter.__init__() accepting local_adapter, web_adapter, and strategy mode in src/application/services/zotero_source_router.py
+- [X] T078 [US5] Implement local-first strategy with per-file fallback to Web API in src/application/services/zotero_source_router.py
+- [X] T079 [US5] Implement web-first strategy with fallback to local DB on rate limits in src/application/services/zotero_source_router.py
+- [X] T080 [US5] Implement auto strategy with intelligent source selection: prefer local if DB available and files exist locally, prefer web if local unavailable or files missing, smart selection based on speed and completeness with automatic fallback, logging selection strategy used (see FR-024)
+- [X] T081 [US5] Implement local-only strict mode (no fallback) in src/application/services/zotero_source_router.py
+- [X] T082 [US5] Implement web-only strict mode (no fallback, backward compatible) in src/application/services/zotero_source_router.py
+- [X] T083 [US5] Implement ZoteroSourceRouter.download_attachment() returning (file_path, source_marker) tuple in src/application/services/zotero_source_router.py
+- [X] T084 [US5] Implement ZoteroSourceRouter.list_collections() with strategy-based routing in src/application/services/zotero_source_router.py
+- [X] T085 [US5] Implement ZoteroSourceRouter.get_collection_items() with strategy-based routing in src/application/services/zotero_source_router.py
+- [X] T086 [US5] Integrate ZoteroSourceRouter into batch_import_from_zotero use case replacing direct adapter usage in src/application/use_cases/batch_import_from_zotero.py
+- [X] T087 [US5] Store source markers ("local" | "web") in DownloadManifestAttachment.source field in batch_import_from_zotero use case in src/application/use_cases/batch_import_from_zotero.py
+- [X] T088 [US5] Add mode configuration option (local-first, web-first, auto, local-only, web-only) to Settings in src/infrastructure/config/settings.py
+- [X] T089 [US5] Add mode CLI option to ingest command with default web-first for backward compatibility in src/infrastructure/cli/commands/ingest.py
 
 **Checkpoint**: At this point, User Stories 1, 2, 3, 4, AND 5 should all work independently
 
