@@ -67,28 +67,28 @@
 
 ### Implementation for User Story 1
 
-- [ ] T021 [US1] Create LocalZoteroDbAdapter class skeleton in src/infrastructure/adapters/zotero_local_db.py implementing ZoteroImporterPort
-- [ ] T022 [US1] Implement platform detection method _detect_zotero_profile() in src/infrastructure/adapters/zotero_local_db.py for Windows/macOS/Linux
-- [ ] T023 [US1] Implement _parse_profiles_ini() method to find default profile in src/infrastructure/adapters/zotero_local_db.py
-- [ ] T024 [US1] Implement _open_db_readonly() method using SQLite URI mode with immutable=1&mode=ro flags in src/infrastructure/adapters/zotero_local_db.py
-- [ ] T025 [US1] Implement LocalZoteroDbAdapter.list_collections() using SQL query on collections table with hierarchy and item counts in src/infrastructure/adapters/zotero_local_db.py
-- [ ] T026 [US1] Implement LocalZoteroDbAdapter.get_collection_items() using recursive CTE for subcollections in src/infrastructure/adapters/zotero_local_db.py
-- [ ] T027 [US1] Implement LocalZoteroDbAdapter.get_item_attachments() using SQL query on itemAttachments table in src/infrastructure/adapters/zotero_local_db.py
-- [ ] T028 [US1] Implement LocalZoteroDbAdapter.resolve_attachment_path() distinguishing linkMode=0 (imported) vs linkMode=1 (linked) in src/infrastructure/adapters/zotero_local_db.py
-- [ ] T029 [US1] Implement LocalZoteroDbAdapter.download_attachment() to copy files from local storage in src/infrastructure/adapters/zotero_local_db.py
-- [ ] T030 [US1] Implement LocalZoteroDbAdapter.get_item_metadata() extracting from items.data JSON field in src/infrastructure/adapters/zotero_local_db.py
-- [ ] T031 [US1] Implement LocalZoteroDbAdapter.list_tags() using SQL query with usage counts in src/infrastructure/adapters/zotero_local_db.py
-- [ ] T032 [US1] Implement LocalZoteroDbAdapter.get_recent_items(limit=10) sorted by dateAdded descending in src/infrastructure/adapters/zotero_local_db.py with default limit of 10 items
-- [ ] T033 [US1] Implement LocalZoteroDbAdapter.find_collection_by_name() with case-insensitive partial match in src/infrastructure/adapters/zotero_local_db.py
-- [ ] T034 [US1] Implement LocalZoteroDbAdapter.can_resolve_locally() optional method for source routing in src/infrastructure/adapters/zotero_local_db.py
-- [ ] T035 [US1] Add error handling for database locks (ZoteroDatabaseLockedError) with fallback support in src/infrastructure/adapters/zotero_local_db.py
-- [ ] T036 [US1] Add error handling for missing database (ZoteroDatabaseNotFoundError) in src/infrastructure/adapters/zotero_local_db.py
-- [ ] T037 [US1] Add error handling for missing profile (ZoteroProfileNotFoundError) in src/infrastructure/adapters/zotero_local_db.py
-- [ ] T038 [US1] Add error handling for path resolution failures (ZoteroPathResolutionError) in src/infrastructure/adapters/zotero_local_db.py
-- [ ] T039 [US1] Create zotero CLI command group in src/infrastructure/cli/commands/zotero.py
-- [ ] T040 [US1] Implement list-collections command displaying hierarchical collection structure (parent-child relationships with indentation) with item counts in src/infrastructure/cli/commands/zotero.py
-- [ ] T041 [US1] Implement browse-collection command displaying first N items (default 20, configurable via --limit option) with metadata in src/infrastructure/cli/commands/zotero.py
-- [ ] T042 [US1] Register zotero command group in src/infrastructure/cli/main.py
+- [X] T021 [US1] Create LocalZoteroDbAdapter class skeleton in src/infrastructure/adapters/zotero_local_db.py implementing ZoteroImporterPort
+- [X] T022 [US1] Implement platform detection method _detect_zotero_profile() in src/infrastructure/adapters/zotero_local_db.py for Windows/macOS/Linux
+- [X] T023 [US1] Implement _parse_profiles_ini() method to find default profile in src/infrastructure/adapters/zotero_local_db.py
+- [X] T024 [US1] Implement _open_db_readonly() method using SQLite URI mode with immutable=1&mode=ro flags in src/infrastructure/adapters/zotero_local_db.py
+- [X] T025 [US1] Implement LocalZoteroDbAdapter.list_collections() using SQL query on collections table with hierarchy and item counts in src/infrastructure/adapters/zotero_local_db.py
+- [X] T026 [US1] Implement LocalZoteroDbAdapter.get_collection_items() using recursive CTE for subcollections in src/infrastructure/adapters/zotero_local_db.py
+- [X] T027 [US1] Implement LocalZoteroDbAdapter.get_item_attachments() using SQL query on itemAttachments table in src/infrastructure/adapters/zotero_local_db.py
+- [X] T028 [US1] Implement LocalZoteroDbAdapter.resolve_attachment_path() distinguishing linkMode=0 (imported) vs linkMode=1 (linked) in src/infrastructure/adapters/zotero_local_db.py
+- [X] T029 [US1] Implement LocalZoteroDbAdapter.download_attachment() to copy files from local storage in src/infrastructure/adapters/zotero_local_db.py
+- [X] T030 [US1] Implement LocalZoteroDbAdapter.get_item_metadata() extracting from items.data JSON field in src/infrastructure/adapters/zotero_local_db.py
+- [X] T031 [US1] Implement LocalZoteroDbAdapter.list_tags() using SQL query with usage counts in src/infrastructure/adapters/zotero_local_db.py
+- [X] T032 [US1] Implement LocalZoteroDbAdapter.get_recent_items(limit=10) sorted by dateAdded descending in src/infrastructure/adapters/zotero_local_db.py with default limit of 10 items
+- [X] T033 [US1] Implement LocalZoteroDbAdapter.find_collection_by_name() with case-insensitive partial match in src/infrastructure/adapters/zotero_local_db.py
+- [X] T034 [US1] Implement LocalZoteroDbAdapter.can_resolve_locally() optional method for source routing in src/infrastructure/adapters/zotero_local_db.py
+- [X] T035 [US1] Add error handling for database locks (ZoteroDatabaseLockedError) with fallback support in src/infrastructure/adapters/zotero_local_db.py
+- [X] T036 [US1] Add error handling for missing database (ZoteroDatabaseNotFoundError) in src/infrastructure/adapters/zotero_local_db.py
+- [X] T037 [US1] Add error handling for missing profile (ZoteroProfileNotFoundError) in src/infrastructure/adapters/zotero_local_db.py
+- [X] T038 [US1] Add error handling for path resolution failures (ZoteroPathResolutionError) in src/infrastructure/adapters/zotero_local_db.py
+- [X] T039 [US1] Create zotero CLI command group in src/infrastructure/cli/commands/zotero.py
+- [X] T040 [US1] Implement list-collections command displaying hierarchical collection structure (parent-child relationships with indentation) with item counts in src/infrastructure/cli/commands/zotero.py
+- [X] T041 [US1] Implement browse-collection command displaying first N items (default 20, configurable via --limit option) with metadata in src/infrastructure/cli/commands/zotero.py
+- [X] T042 [US1] Register zotero command group in src/infrastructure/cli/main.py
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 

@@ -109,13 +109,14 @@ def list_collections(
 def browse_collection(
     collection: str = typer.Option(..., "--collection", "-c", help="Collection name or key"),
     include_subcollections: bool = typer.Option(False, "--subcollections", "-s", help="Include items from subcollections"),
+    limit: int = typer.Option(20, "--limit", "-l", help="Maximum number of items to display (default: 20)"),
 ) -> None:
     """
     Browse items in a Zotero collection.
     
     Examples:
         citeloom zotero browse-collection --collection "Machine Learning Papers"
-        citeloom zotero browse-collection -c ABC12345 --subcollections
+        citeloom zotero browse-collection -c ABC12345 --subcollections --limit 50
     """
     adapter = _get_zotero_adapter()
     
@@ -134,14 +135,23 @@ def browse_collection(
                 console.print(f"[yellow]Collection '{collection}' not found by name, trying as key...[/yellow]")
         
         # Get items
-        items = list(adapter.get_collection_items(collection_key, include_subcollections=include_subcollections))
+        all_items = list(adapter.get_collection_items(collection_key, include_subcollections=include_subcollections))
+        items = all_items[:limit]  # Limit items displayed
         
-        if not items:
+        if not all_items:
             console.print(f"[yellow]No items found in collection '{collection_name}'[/yellow]")
             return
         
+        total_count = len(all_items)
+        displayed_count = len(items)
+        
+        if displayed_count < total_count:
+            console.print(f"[yellow]Showing first {displayed_count} items (use --limit to change)[/yellow]")
+        
+        title_suffix = f"({displayed_count} of {total_count} shown)" if displayed_count < total_count else f"({total_count} found)"
+        
         table = Table(
-            title=f"Items in '{collection_name}' ({len(items)} found)",
+            title=f"Items in '{collection_name}' {title_suffix}",
             show_header=True,
             header_style="bold magenta",
         )
@@ -180,10 +190,11 @@ def browse_collection(
         
         console.print(table)
         
-        # Show metadata summary for first few items
-        if len(items) <= 5:
+        # Show metadata summary for first few items (up to 5)
+        summary_items = items[:5]
+        if len(summary_items) > 0:
             console.print("\n[bold]Metadata Summary:[/bold]")
-            for item in items[:5]:
+            for item in summary_items:
                 item_data = item.get("data", {})
                 metadata = adapter.get_item_metadata(item.get("key", ""))
                 console.print(f"\n[cyan]{metadata.get('title', '(No title)')}[/cyan]")
