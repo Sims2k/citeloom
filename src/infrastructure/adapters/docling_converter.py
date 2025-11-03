@@ -5,8 +5,12 @@ import logging
 import re
 import signal
 import sys
+import time
 from pathlib import Path
-from typing import Mapping, Any
+from typing import Mapping, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ...application.ports.progress_reporter import ProgressReporterPort, DocumentProgressContext
 
 try:
     from docling.document_converter import DocumentConverter
@@ -964,6 +968,7 @@ class DoclingConverterAdapter:
         self,
         source_path: str,
         ocr_languages: list[str] | None = None,
+        progress_reporter: "ProgressReporterPort | None" = None,
     ) -> Mapping[str, Any]:
         """
         Convert a document at source_path into structured text and metadata.
@@ -971,6 +976,7 @@ class DoclingConverterAdapter:
         Args:
             source_path: Path to source document (PDF, DOCX, PPTX, HTML, images)
             ocr_languages: Optional OCR language codes (priority: Zotero metadata → explicit config → default ['en', 'de'])
+            progress_reporter: Optional progress reporter for document-level progress updates
         
         Returns:
             ConversionResult-like dict with keys:
@@ -990,6 +996,18 @@ class DoclingConverterAdapter:
             f"Converting document: {source_path}",
             extra={"source_path": source_path, "ocr_languages": ocr_languages},
         )
+        
+        # T031, T032: Initialize document-level progress if reporter provided
+        doc_progress: "DocumentProgressContext | None" = None
+        if progress_reporter:
+            doc_progress = progress_reporter.start_document(
+                document_index=1,
+                total_documents=1,
+                document_name=source_path,
+            )
+            # T034: Throttled progress update - converting stage
+            if doc_progress:
+                doc_progress.update_stage("converting", "Converting document to text")
         
         # Select OCR languages
         selected_languages = self._select_ocr_languages(ocr_languages)
@@ -1073,9 +1091,17 @@ class DoclingConverterAdapter:
                 },
             )
             
+            # T032: Mark conversion stage as complete
+            if doc_progress:
+                doc_progress.finish()
+            
             return result
         
         except TimeoutError as e:
+            # T032: Mark progress as failed
+            if doc_progress:
+                doc_progress.fail(f"Conversion timed out: {e}")
+            
             # T103: Enhanced diagnostic logging for timeout failures
             logger.error(
                 f"Document conversion timed out: {e}",
@@ -1093,6 +1119,10 @@ class DoclingConverterAdapter:
             )
             raise
         except Exception as e:
+            # T032: Mark progress as failed
+            if doc_progress:
+                doc_progress.fail(f"Conversion failed: {e}")
+            
             # T103: Enhanced diagnostic logging for general conversion failures
             logger.error(
                 f"Document conversion failed: {e}",

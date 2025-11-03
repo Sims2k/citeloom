@@ -92,6 +92,9 @@ class RichDocumentProgressContext:
         self.current_stage = "pending"
         self.stage_start_time: dict[str, float] = {}
         self.stage_durations: dict[str, list[float]] = {}
+        # T034: Progress update throttling (maximum once per second)
+        self._last_update_time = 0.0
+        self._update_interval = 1.0  # seconds
 
     def update_stage(
         self,
@@ -101,10 +104,20 @@ class RichDocumentProgressContext:
         """
         Update current processing stage.
         
+        T034: Implements progress update throttling (maximum once per second).
+        
         Args:
             stage: Stage name (converting, chunking, embedding, storing)
             description: Human-readable description
         """
+        # T034: Throttle progress updates (maximum once per second)
+        now = time.time()
+        if now - self._last_update_time < self._update_interval:
+            # Skip update if less than 1 second has passed
+            return
+        
+        self._last_update_time = now
+        
         # Record stage duration for time estimation
         if self.current_stage != "pending" and self.current_stage in self.stage_start_time:
             elapsed = time.time() - self.stage_start_time[self.current_stage]

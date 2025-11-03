@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,7 @@ from src.domain.errors import (
 )
 from src.infrastructure.adapters.zotero_importer import ZoteroImporterAdapter
 from src.infrastructure.adapters.zotero_local_db import LocalZoteroDbAdapter
+from src.infrastructure.adapters.rich_progress_reporter import RichProgressReporterAdapter
 from src.infrastructure.config.environment import load_environment_variables
 from src.infrastructure.config.settings import Settings
 
@@ -224,6 +226,12 @@ def browse_collection(
     adapter = _get_zotero_adapter()
     
     try:
+        # T033: Track operation start time for progress indication
+        operation_start_time = time.time()
+        show_progress = False
+        progress_reporter: RichProgressReporterAdapter | None = None
+        batch_context: Any = None
+        
         # Create command-scoped caches (T012, T013)
         collection_cache: dict[str, dict[str, Any]] = {}
         item_cache: dict[str, dict[str, Any]] = {}
@@ -236,6 +244,21 @@ def browse_collection(
         # Get items
         all_items = list(adapter.get_collection_items(collection_key, include_subcollections=include_subcollections))
         items = all_items[:limit]  # Limit items displayed
+        
+        # T033: Check if operation is taking >5 seconds and show progress
+        elapsed_time = time.time() - operation_start_time
+        if elapsed_time > 5.0:
+            show_progress = True
+            progress_reporter = RichProgressReporterAdapter()
+            batch_context = progress_reporter.start_batch(
+                total_documents=len(items),
+                description=f"Browsing collection '{collection_name}'",
+            )
+            console.print(f"[yellow]Operation taking longer than expected, showing progress...[/yellow]")
+        
+        # T033: Update progress if showing
+        if show_progress and batch_context:
+            batch_context.update(len(items))
         
         if not all_items:
             console.print(f"[yellow]No items found in collection '{collection_name}'[/yellow]")
@@ -395,6 +418,12 @@ def browse_collection(
                     console.print(f"  URL: {metadata.get('url')}")
                 if metadata.get("language"):
                     console.print(f"  Language: {metadata.get('language')}")
+        
+        # T033: Finish progress reporting if started
+        if show_progress and progress_reporter and batch_context:
+            batch_context.finish()
+            operation_duration = time.time() - operation_start_time
+            console.print(f"[green]Completed in {operation_duration:.1f}s[/green]")
         
     except ZoteroConnectionError as e:
         console.print(f"[red]Zotero connection error: {e.message}[/red]")

@@ -80,10 +80,10 @@
 
 ### Tests for User Story 2
 
-- [ ] T018 [P] [US2] Add test for page map extraction with multi-page document in `tests/integration/test_docling_page_extraction.py`
-- [ ] T019 [P] [US2] Add test for heading tree extraction with document containing headings in `tests/integration/test_docling_heading_extraction.py`
-- [ ] T020 [P] [US2] Add test for chunk creation producing multiple chunks from large document in `tests/integration/test_docling_chunking.py`
-- [ ] T021 [P] [US2] Add test for manual chunking fallback on Windows producing multiple chunks in `tests/integration/test_docling_chunking.py`
+- [X] T018 [P] [US2] Add test for page map extraction with multi-page document in `tests/integration/test_docling_page_extraction.py`
+- [X] T019 [P] [US2] Add test for heading tree extraction with document containing headings in `tests/integration/test_docling_heading_extraction.py`
+- [X] T020 [P] [US2] Add test for chunk creation producing multiple chunks from large document in `tests/integration/test_docling_chunking.py`
+- [X] T021 [P] [US2] Add test for manual chunking fallback on Windows producing multiple chunks in `tests/integration/test_docling_chunking.py`
 
 ### Implementation for User Story 2
 
@@ -111,12 +111,12 @@
 
 ### Implementation for User Story 3
 
-- [ ] T031 [US3] Integrate `RichProgressReporterAdapter` into `convert()` method in `src/infrastructure/adapters/docling_converter.py`
-- [ ] T032 [US3] Add document-level progress for single document conversions in `src/infrastructure/adapters/docling_converter.py`
-- [ ] T033 [US3] Add progress indication to `browse_collection()` function for operations >5 seconds in `src/infrastructure/cli/commands/zotero.py`
-- [ ] T034 [US3] Implement progress update throttling (maximum once per second) in progress reporter integration
-- [ ] T035 [US3] Update `IngestDocument` use case to accept and use `ProgressReporterPort` parameter in `src/application/use_cases/ingest_document.py`
-- [ ] T036 [US3] Add progress stage updates (converting, chunking, embedding, storing) in `IngestDocument` use case
+- [X] T031 [US3] Integrate `RichProgressReporterAdapter` into `convert()` method in `src/infrastructure/adapters/docling_converter.py`
+- [X] T032 [US3] Add document-level progress for single document conversions in `src/infrastructure/adapters/docling_converter.py`
+- [X] T033 [US3] Add progress indication to `browse_collection()` function for operations >5 seconds in `src/infrastructure/cli/commands/zotero.py`
+- [X] T034 [US3] Implement progress update throttling (maximum once per second) in progress reporter integration
+- [X] T035 [US3] Update `IngestDocument` use case to accept and use `ProgressReporterPort` parameter in `src/application/use_cases/ingest_document.py`
+- [X] T036 [US3] Add progress stage updates (converting, chunking, embedding, storing) in `IngestDocument` use case
 
 **Checkpoint**: User Story 3 complete - progress indication visible within 5 seconds for operations >5 seconds
 
