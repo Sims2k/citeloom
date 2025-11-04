@@ -26,6 +26,7 @@ def docling_converter():
         pytest.skip("Docling not available")
 
 
+@pytest.mark.slow
 def test_docling_conversion_page_map(docling_converter, sample_pdf_path):
     """Test that DoclingConverterAdapter produces conversion result with page map."""
     if not sample_pdf_path:
@@ -55,6 +56,7 @@ def test_docling_conversion_page_map(docling_converter, sample_pdf_path):
             assert start_offset <= end_offset, f"Start offset ({start_offset}) should be <= end offset ({end_offset})"
 
 
+@pytest.mark.slow
 def test_docling_conversion_heading_tree(docling_converter, sample_pdf_path):
     """Test that DoclingConverterAdapter produces conversion result with heading tree."""
     if not sample_pdf_path:
@@ -69,6 +71,7 @@ def test_docling_conversion_heading_tree(docling_converter, sample_pdf_path):
     assert isinstance(heading_tree, dict), "heading_tree should be a dictionary"
 
 
+@pytest.mark.slow
 def test_docling_chunking_with_policy(docling_converter, sample_pdf_path):
     """Test that DoclingHybridChunkerAdapter chunks documents according to policy."""
     if not sample_pdf_path:
@@ -105,6 +108,7 @@ def test_docling_chunking_with_policy(docling_converter, sample_pdf_path):
     assert isinstance(first_chunk.chunk_idx, int), "Chunk should have chunk_idx"
 
 
+@pytest.mark.slow
 def test_docling_chunking_deterministic_ids(docling_converter, sample_pdf_path):
     """Test that chunking produces deterministic IDs for same inputs."""
     if not sample_pdf_path:
@@ -129,6 +133,7 @@ def test_docling_chunking_deterministic_ids(docling_converter, sample_pdf_path):
         assert c1.chunk_idx == c2.chunk_idx
 
 
+@pytest.mark.slow
 def test_docling_chunking_page_spans(docling_converter, sample_pdf_path):
     """Test that chunks have valid page spans."""
     if not sample_pdf_path:
