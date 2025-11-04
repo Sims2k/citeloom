@@ -11,6 +11,40 @@ overlap_tokens = 60
 heading_context = 2
 tokenizer = "minilm"
 
+[docling]
+# Timeout limits for document conversion (CPU-only processing may take longer)
+# For very large documents (>30MB), consider increasing to 900-1200s (15-20 minutes)
+document_timeout_seconds = 600  # 10 minutes (default for most documents)
+page_timeout_seconds = 15       # Increased per-page timeout for complex pages
+
+# CPU acceleration: Number of threads to use (None = auto-detect, use all available cores)
+# For CPU-only processing, using all cores can significantly speed up conversion
+# cpu_threads = null  # null = auto-detect (recommended for CPU-only) - commented out as TOML doesn't support null
+
+# GPU acceleration: Enable if you have a CUDA-capable GPU (requires CUDA setup)
+enable_gpu = false
+
+# CPU optimization settings (based on https://github.com/Sims2k/pdf_data_pipeline)
+use_fast_table_mode = true        # Use FAST mode for table extraction (faster on CPU)
+enable_remote_services = false    # Disable remote services for security and speed
+# artifacts_path = null             # Custom path for model cache (null = use default ~/.cache/docling/models) - commented out as TOML doesn't support null
+
+# Feature toggles (disable expensive features for faster CPU processing)
+do_table_structure = true         # Enable table structure extraction (essential)
+do_ocr = true                     # Enable OCR for scanned documents (auto-detected if needed)
+do_code_enrichment = false        # Disable code enrichment (faster processing)
+do_formula_enrichment = false     # Disable formula enrichment (faster processing)
+do_picture_classification = false # Disable picture classification (faster processing)
+do_picture_description = false   # Disable picture description (faster processing)
+generate_page_images = false      # Disable page image generation (faster processing)
+
+# Windowed conversion: Process large documents in page windows to avoid timeouts
+# This enables processing very large documents (>1000 pages) without timeouts
+enable_windowed_conversion = true   # Enable windowed conversion for documents >1000 pages
+force_windowed_conversion = false   # Force windowed conversion regardless of page count (manual override)
+window_size = 10                      # Pages per window (10-30 recommended for CPU-only)
+checkpoint_enabled = true             # Enable checkpoint/resume support
+
 [qdrant]
 url = "http://localhost:6333"
 api_key = ""

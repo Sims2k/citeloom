@@ -17,6 +17,19 @@ from ..ports.vector_index import VectorIndexPort
 from ..ports.progress_reporter import DocumentProgressContext, ProgressReporterPort
 from ..ports.fulltext_resolver import FulltextResolverPort, FulltextResult
 
+# Windowed conversion imports (optional)
+try:
+    from ...infrastructure.adapters.docling_windowed import convert_windowed, WindowedConversionResult
+    from ...infrastructure.adapters.docling_windowed_helpers import should_use_windowed_conversion
+    from ...infrastructure.adapters.docling_converter import DoclingConverterAdapter
+    WINDOWED_AVAILABLE = True
+except ImportError:
+    WINDOWED_AVAILABLE = False
+    convert_windowed = None  # type: ignore
+    WindowedConversionResult = None  # type: ignore
+    should_use_windowed_conversion = None  # type: ignore
+    DoclingConverterAdapter = None  # type: ignore
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,6 +49,7 @@ def ingest_document(
     attachment_key: str | None = None,
     prefer_zotero_fulltext: bool = True,
     item_key: str | None = None,
+    docling_settings: dict[str, Any] | None = None,
 ) -> IngestResult:
     """
     Orchestrate document ingestion: convert → chunk → metadata → embed → upsert → audit.
@@ -56,6 +70,7 @@ def ingest_document(
         attachment_key: Optional Zotero attachment key for fulltext lookup
         prefer_zotero_fulltext: If True, prefer Zotero fulltext when available (default: True)
         item_key: Optional Zotero item key for traceability (T094)
+        docling_settings: Optional Docling settings dict (enable_windowed_conversion, window_size, etc.)
     
     Returns:
         IngestResult with chunks_written, documents_processed, duration_seconds, embed_model, warnings
@@ -195,53 +210,174 @@ def ingest_document(
             logger.warning(warning_msg, extra={"correlation_id": correlation_id}, exc_info=True)
             # Fall through to Docling conversion
     
-    # If fulltext not used, convert via Docling
+    # If fulltext not used, convert via Docling (with optional windowed conversion)
     if conversion is None:
         if doc_progress:
             doc_progress.update_stage("converting", "Converting document to text")
-        try:
-            # T035: Pass progress_reporter to converter for document-level progress
-            conversion = converter.convert(
-                request.source_path,
-                ocr_languages=ocr_languages,
-                progress_reporter=progress_reporter,
-            )
-            doc_id = conversion.get("doc_id", "unknown")
+        
+        # Check if windowed conversion should be used
+        use_windowed = False
+        window_size = 10
+        if WINDOWED_AVAILABLE and docling_settings and isinstance(converter, DoclingConverterAdapter):
+            enable_windowed = docling_settings.get("enable_windowed_conversion", True)
+            window_size = docling_settings.get("window_size", 10)
+            
+            if enable_windowed and should_use_windowed_conversion:
+                use_windowed = should_use_windowed_conversion(
+                    request.source_path,
+                    enable_windowed=enable_windowed,
+                    page_threshold=1000,  # Use windowed for documents >1000 pages
+                )
+        
+        if use_windowed:
+            # Use windowed conversion for large documents
             logger.info(
-                f"Document converted: doc_id={doc_id}",
-                extra={"correlation_id": correlation_id, "doc_id": doc_id, "ocr_languages": ocr_languages},
+                f"Using windowed conversion for large document: {request.source_path}",
+                extra={"correlation_id": correlation_id, "window_size": window_size},
+            )
+            
+            # Process document in windows
+            all_chunks: list[Any] = []
+            all_texts: list[str] = []
+            all_enriched: list[dict[str, Any]] = []
+            
+            try:
+                # Process each window
+                for window_result in convert_windowed(
+                    converter=converter,
+                    source_path=request.source_path,
+                    window_size=window_size,
+                    ocr_languages=ocr_languages,
+                ):
+                    if doc_progress:
+                        doc_progress.update_stage(
+                            "converting",
+                            f"Converting window {window_result.window_num}: "
+                            f"pages {window_result.start_page}-{window_result.end_page} "
+                            f"({window_result.progress_pct:.1f}%)"
+                        )
+                    
+                    # Chunk this window
+                    from ...domain.policy.chunking_policy import ChunkingPolicy
+                    policy = ChunkingPolicy()
+                    window_chunks = chunker.chunk(window_result.conversion_result, policy)
+                    
+                    # Enrich chunks with metadata
+                    window_texts: list[str] = []
+                    window_enriched: list[dict[str, Any]] = []
+                    for chunk in window_chunks:
+                        if hasattr(chunk, "text"):
+                            chunk_text = chunk.text
+                            chunk_dict = {
+                                "id": chunk.id,
+                                "doc_id": chunk.doc_id,
+                                "text": chunk.text,
+                                "page_span": chunk.page_span,
+                                "section_heading": chunk.section_heading,
+                                "section_path": chunk.section_path,
+                                "chunk_idx": chunk.chunk_idx,
+                            }
+                        else:
+                            chunk_dict = dict(chunk)
+                            chunk_text = chunk_dict.get("text", "")
+                        
+                        if resolved_meta:
+                            chunk_dict["citation"] = {
+                                "citekey": resolved_meta.citekey,
+                                "title": resolved_meta.title,
+                                "authors": resolved_meta.authors,
+                                "year": resolved_meta.year,
+                                "doi": resolved_meta.doi,
+                                "url": resolved_meta.url,
+                                "tags": resolved_meta.tags,
+                                "collections": resolved_meta.collections,
+                            }
+                        
+                        window_enriched.append(chunk_dict)
+                        window_texts.append(chunk_text)
+                    
+                    all_chunks.extend(window_chunks)
+                    all_enriched.extend(window_enriched)
+                    all_texts.extend(window_texts)
+                    
+                    logger.info(
+                        f"Window {window_result.window_num} processed: {len(window_chunks)} chunks",
+                        extra={
+                            "correlation_id": correlation_id,
+                            "window_num": window_result.window_num,
+                            "chunks": len(window_chunks),
+                            "progress_pct": window_result.progress_pct,
+                        },
+                    )
+                
+                # Use first window's doc_id (or compute stable doc_id)
+                conversion = {
+                    "doc_id": all_chunks[0].doc_id if all_chunks else "unknown",
+                    "structure": {"heading_tree": {}, "page_map": {}},
+                    "plain_text": " ".join(all_texts),
+                }
+                chunks = all_chunks
+                texts = all_texts
+                enriched = all_enriched
+                
+                logger.info(
+                    f"Windowed conversion complete: {len(all_chunks)} total chunks from all windows",
+                    extra={"correlation_id": correlation_id, "total_chunks": len(all_chunks)},
+                )
+                
+            except Exception as e:
+                error_msg = f"Windowed conversion failed: {e}"
+                logger.error(error_msg, extra={"correlation_id": correlation_id}, exc_info=True)
+                warnings.append(error_msg)
+                if doc_progress:
+                    doc_progress.fail(error_msg)
+                raise
+        else:
+            # Standard conversion for smaller documents
+            try:
+                # T035: Pass progress_reporter to converter for document-level progress
+                conversion = converter.convert(
+                    request.source_path,
+                    ocr_languages=ocr_languages,
+                    progress_reporter=progress_reporter,
+                )
+                doc_id = conversion.get("doc_id", "unknown")
+                logger.info(
+                    f"Document converted: doc_id={doc_id}",
+                    extra={"correlation_id": correlation_id, "doc_id": doc_id, "ocr_languages": ocr_languages},
+                )
+            except Exception as e:
+                error_msg = f"Document conversion failed: {e}"
+                logger.error(error_msg, extra={"correlation_id": correlation_id}, exc_info=True)
+                warnings.append(error_msg)
+                if doc_progress:
+                    doc_progress.fail(error_msg)
+                raise
+    
+    doc_id = conversion.get("doc_id", "unknown")
+    
+    # Step 3: Chunk document (if not already chunked via windowed conversion)
+    if 'chunks' not in locals() or 'texts' not in locals() or 'enriched' not in locals():
+        if doc_progress:
+            doc_progress.update_stage("chunking", "Chunking document into segments")
+        try:
+            from ...domain.policy.chunking_policy import ChunkingPolicy
+            
+            # TODO: Load policy from settings/config
+            policy = ChunkingPolicy()
+            chunks: Sequence[Any] = chunker.chunk(conversion, policy)
+            
+            logger.info(
+                f"Document chunked: {len(chunks)} chunks created",
+                extra={"correlation_id": correlation_id, "doc_id": doc_id, "chunk_count": len(chunks)},
             )
         except Exception as e:
-            error_msg = f"Document conversion failed: {e}"
-            logger.error(error_msg, extra={"correlation_id": correlation_id}, exc_info=True)
+            error_msg = f"Chunking failed: {e}"
+            logger.error(error_msg, extra={"correlation_id": correlation_id, "doc_id": doc_id}, exc_info=True)
             warnings.append(error_msg)
             if doc_progress:
                 doc_progress.fail(error_msg)
             raise
-    
-    doc_id = conversion.get("doc_id", "unknown")
-    
-    # Step 3: Chunk document
-    if doc_progress:
-        doc_progress.update_stage("chunking", "Chunking document into segments")
-    try:
-        from ...domain.policy.chunking_policy import ChunkingPolicy
-        
-        # TODO: Load policy from settings/config
-        policy = ChunkingPolicy()
-        chunks: Sequence[Any] = chunker.chunk(conversion, policy)
-        
-        logger.info(
-            f"Document chunked: {len(chunks)} chunks created",
-            extra={"correlation_id": correlation_id, "doc_id": doc_id, "chunk_count": len(chunks)},
-        )
-    except Exception as e:
-        error_msg = f"Chunking failed: {e}"
-        logger.error(error_msg, extra={"correlation_id": correlation_id, "doc_id": doc_id}, exc_info=True)
-        warnings.append(error_msg)
-        if doc_progress:
-            doc_progress.fail(error_msg)
-        raise
     
     # Metadata already resolved in Step 1, but verify we still have it
     # If not resolved early, try again with doc_id now available
@@ -286,40 +422,41 @@ def ingest_document(
                 extra={"correlation_id": correlation_id, "doc_id": doc_id},
             )
     
-    # Step 5: Enrich chunks with metadata and prepare for embedding
-    texts: list[str] = []
-    enriched: list[dict[str, Any]] = []
-    for chunk in chunks:
-        # Extract text from chunk (handle both Chunk objects and dicts)
-        if hasattr(chunk, "text"):
-            chunk_text = chunk.text
-            chunk_dict = {
-                "id": chunk.id,
-                "doc_id": chunk.doc_id,
-                "text": chunk.text,
-                "page_span": chunk.page_span,
-                "section_heading": chunk.section_heading,
-                "section_path": chunk.section_path,
-                "chunk_idx": chunk.chunk_idx,
-            }
-        else:
-            chunk_dict = dict(chunk)  # type: ignore[arg-type]
-            chunk_text = chunk_dict.get("text", "")
-        
-        # Attach citation metadata to chunk (if resolved)
-        if resolved_meta:
-            chunk_dict["citation"] = {
-                "citekey": resolved_meta.citekey,
-                "title": resolved_meta.title,
-                "authors": resolved_meta.authors,
-                "year": resolved_meta.year,
-                "doi": resolved_meta.doi,
-                "url": resolved_meta.url,
-                "tags": resolved_meta.tags,
-                "collections": resolved_meta.collections,
-            }
-        enriched.append(chunk_dict)
-        texts.append(chunk_text)
+    # Step 5: Enrich chunks with metadata and prepare for embedding (if not already done)
+    if 'texts' not in locals() or 'enriched' not in locals():
+        texts: list[str] = []
+        enriched: list[dict[str, Any]] = []
+        for chunk in chunks:
+            # Extract text from chunk (handle both Chunk objects and dicts)
+            if hasattr(chunk, "text"):
+                chunk_text = chunk.text
+                chunk_dict = {
+                    "id": chunk.id,
+                    "doc_id": chunk.doc_id,
+                    "text": chunk.text,
+                    "page_span": chunk.page_span,
+                    "section_heading": chunk.section_heading,
+                    "section_path": chunk.section_path,
+                    "chunk_idx": chunk.chunk_idx,
+                }
+            else:
+                chunk_dict = dict(chunk)  # type: ignore[arg-type]
+                chunk_text = chunk_dict.get("text", "")
+            
+            # Attach citation metadata to chunk (if resolved)
+            if resolved_meta:
+                chunk_dict["citation"] = {
+                    "citekey": resolved_meta.citekey,
+                    "title": resolved_meta.title,
+                    "authors": resolved_meta.authors,
+                    "year": resolved_meta.year,
+                    "doi": resolved_meta.doi,
+                    "url": resolved_meta.url,
+                    "tags": resolved_meta.tags,
+                    "collections": resolved_meta.collections,
+                }
+            enriched.append(chunk_dict)
+            texts.append(chunk_text)
     
     # Step 6: Generate embeddings
     if doc_progress:

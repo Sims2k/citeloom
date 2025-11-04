@@ -18,6 +18,34 @@ class ChunkingSettings(BaseModel):
     tokenizer: str = "minilm"
 
 
+class DoclingSettings(BaseModel):
+    """Docling conversion configuration settings."""
+    
+    document_timeout_seconds: int = 600  # 10 minutes for CPU-only processing of large documents
+    page_timeout_seconds: int = 15  # Increased per-page timeout
+    cpu_threads: int | None = None  # None = auto-detect (use all available cores)
+    enable_gpu: bool = False  # GPU acceleration (requires CUDA-capable GPU)
+    max_pages_per_chunk: int | None = None  # Split large documents (>0 = enable splitting)
+    
+    # CPU optimization settings
+    use_fast_table_mode: bool = True  # Use FAST mode for table extraction (faster on CPU)
+    enable_remote_services: bool = False  # Disable remote services for security and speed
+    artifacts_path: str | None = None  # Custom path for model cache (None = use default ~/.cache/docling/models)
+    do_table_structure: bool = True  # Enable table structure extraction
+    do_ocr: bool = True  # Enable OCR for scanned documents (auto-detected if needed)
+    do_code_enrichment: bool = False  # Disable code enrichment (faster processing)
+    do_formula_enrichment: bool = False  # Disable formula enrichment (faster processing)
+    do_picture_classification: bool = False  # Disable picture classification (faster processing)
+    do_picture_description: bool = False  # Disable picture description (faster processing)
+    generate_page_images: bool = False  # Disable page image generation (faster processing)
+    
+    # Windowed conversion settings (for very large documents)
+    enable_windowed_conversion: bool = True  # Enable windowed conversion for documents >1000 pages
+    force_windowed_conversion: bool = False  # Force windowed conversion regardless of page count (manual override)
+    window_size: int = 10  # Pages per window (10-30 recommended)
+    checkpoint_enabled: bool = True  # Enable checkpoint/resume support
+
+
 class QdrantSettings(BaseModel):
     """Qdrant connection settings."""
     
@@ -122,6 +150,7 @@ class Settings(BaseModel):
     """Main settings loaded from citeloom.toml."""
     
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)
+    docling: DoclingSettings = Field(default_factory=DoclingSettings)
     qdrant: QdrantSettings = Field(default_factory=QdrantSettings)
     paths: PathsSettings = Field(default_factory=PathsSettings)
     zotero: ZoteroSettings = Field(default_factory=ZoteroSettings)
@@ -155,6 +184,10 @@ class Settings(BaseModel):
         # Extract chunking settings
         chunking_data = data.get("chunking", {})
         chunking = ChunkingSettings(**chunking_data)
+        
+        # Extract Docling settings
+        docling_data = data.get("docling", {})
+        docling = DoclingSettings(**docling_data)
         
         # Extract Qdrant settings
         qdrant_data = data.get("qdrant", {})
@@ -198,6 +231,7 @@ class Settings(BaseModel):
         
         return cls(
             chunking=chunking,
+            docling=docling,
             qdrant=qdrant,
             paths=paths,
             zotero=zotero,
