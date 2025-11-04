@@ -711,33 +711,39 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
             for row in cursor:
                 if has_data_column:
                     # New schema - parse JSON data field
-                    data_str = row.get("data")
+                    data_str = row["data"] if "data" in row.keys() else None
+                    attachment_key = row["attachment_key"] if "attachment_key" in row.keys() else None
+                    
                     if isinstance(data_str, str):
                         try:
                             attachment_data = json.loads(data_str)
                         except json.JSONDecodeError:
-                            logger.warning(f"Failed to parse JSON for attachment {row.get('attachment_key')}")
+                            logger.warning(f"Failed to parse JSON for attachment {attachment_key}")
                             attachment_data = {}
                     else:
                         attachment_data = data_str if isinstance(data_str, dict) else {}
                     
                     attachments.append({
-                        "key": row["attachment_key"],
-                        "filename": attachment_data.get("filename", ""),
-                        "contentType": attachment_data.get("contentType", "application/pdf"),
-                        "linkMode": attachment_data.get("linkMode", 0),
+                        "key": attachment_key or "",
+                        "filename": attachment_data.get("filename", "") if attachment_data else "",
+                        "contentType": attachment_data.get("contentType", "application/pdf") if attachment_data else "application/pdf",
+                        "linkMode": attachment_data.get("linkMode", 0) if attachment_data else 0,
                         "data": attachment_data,
                     })
                 else:
                     # Old schema - use direct columns
+                    path_val = row["path"] if "path" in row.keys() else ""
+                    content_type = row["contentType"] if "contentType" in row.keys() else "application/pdf"
+                    attachment_key = row["attachment_key"] if "attachment_key" in row.keys() else ""
+                    
                     attachments.append({
-                        "key": row["attachment_key"],
-                        "filename": Path(row.get("path", "")).name if row.get("path") else "",
-                        "contentType": row.get("contentType", "application/pdf"),
+                        "key": attachment_key,
+                        "filename": Path(path_val).name if path_val else "",
+                        "contentType": content_type,
                         "linkMode": 0,  # Default to imported
                         "data": {
-                            "filename": Path(row.get("path", "")).name if row.get("path") else "",
-                            "contentType": row.get("contentType", "application/pdf"),
+                            "filename": Path(path_val).name if path_val else "",
+                            "contentType": content_type,
                             "linkMode": 0,
                         },
                     })
@@ -808,15 +814,31 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
         if self._conn is None:
             raise ZoteroDatabaseNotFoundError("Database not connected")
         
-        query = """
-            SELECT 
-                ia.data,
-                json_extract(ia.data, '$.linkMode') as linkMode,
-                json_extract(ia.data, '$.path') as path,
-                (SELECT key FROM items WHERE itemID = ia.parentItemID) as parent_item_key
-            FROM itemAttachments ia
-            WHERE ia.key = ?;
-        """
+        # Check schema version
+        has_data_column = self._check_schema_has_data_column()
+        
+        if has_data_column:
+            query = """
+                SELECT 
+                    ia.data,
+                    json_extract(ia.data, '$.linkMode') as linkMode,
+                    json_extract(ia.data, '$.path') as path,
+                    (SELECT key FROM items WHERE itemID = ia.parentItemID) as parent_item_key
+                FROM itemAttachments ia
+                WHERE ia.key = ?;
+            """
+        else:
+            # Old schema - use direct columns
+            # In old schema, itemAttachments doesn't have 'key' column, need to join with items table
+            query = """
+                SELECT 
+                    ia.linkMode,
+                    ia.path,
+                    (SELECT key FROM items WHERE itemID = ia.parentItemID) as parent_item_key
+                FROM itemAttachments ia
+                JOIN items i ON ia.itemID = i.itemID
+                WHERE i.key = ?;
+            """
         
         try:
             cursor = self._conn.execute(query, (attachment_key,))
@@ -828,21 +850,33 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
                     hint="Attachment not found in database",
                 )
             
-            link_mode = row["linkMode"]
-            db_path = row["path"]
-            parent_item_key = row["parent_item_key"]
+            link_mode = row["linkMode"] if "linkMode" in row.keys() else 0
+            db_path = row["path"] if "path" in row.keys() else None
+            parent_item_key = row["parent_item_key"] if "parent_item_key" in row.keys() else None
             
             # Parse data to get filename
-            data_str = row["data"]
-            if isinstance(data_str, str):
-                try:
-                    attachment_data = json.loads(data_str)
-                except json.JSONDecodeError:
-                    attachment_data = {}
+            if has_data_column:
+                data_str = row["data"] if "data" in row.keys() else None
+                if isinstance(data_str, str):
+                    try:
+                        attachment_data = json.loads(data_str)
+                    except json.JSONDecodeError:
+                        attachment_data = {}
+                else:
+                    attachment_data = data_str if isinstance(data_str, dict) else {}
+                
+                filename = attachment_data.get("filename", "")
             else:
-                attachment_data = data_str if isinstance(data_str, dict) else {}
-            
-            filename = attachment_data.get("filename", "")
+                # Old schema - filename is in path
+                # Remove "storage:" prefix if present (old schema artifact)
+                if db_path:
+                    path_str = str(db_path)
+                    if path_str.startswith("storage:"):
+                        path_str = path_str[8:]  # Remove "storage:" prefix
+                    filename = Path(path_str).name
+                else:
+                    filename = ""
+                attachment_data = {}
             
             if link_mode == 0:  # Imported file
                 # Imported files are in storage directory: storage/{attachment_key}/{filename}

@@ -139,6 +139,9 @@ def run(
     # Use project settings or CLI overrides
     model_id = embedding_model or project_settings.embedding_model
     
+    # Get Docling settings for converter initialization
+    docling_settings = settings.docling
+    
     # Zotero config: parse JSON if provided, otherwise use env vars (resolver will handle)
     zotero_config_dict = None
     if zotero_config:
@@ -250,7 +253,22 @@ def run(
         
         # Initialize adapters for batch import
         try:
-            converter: TextConverterPort = get_converter()
+            converter: TextConverterPort = get_converter(
+                document_timeout_seconds=docling_settings.document_timeout_seconds,
+                page_timeout_seconds=docling_settings.page_timeout_seconds,
+                cpu_threads=docling_settings.cpu_threads,
+                enable_gpu=docling_settings.enable_gpu,
+                use_fast_table_mode=docling_settings.use_fast_table_mode,
+                enable_remote_services=docling_settings.enable_remote_services,
+                artifacts_path=docling_settings.artifacts_path,
+                do_table_structure=docling_settings.do_table_structure,
+                do_ocr=docling_settings.do_ocr,
+                do_code_enrichment=docling_settings.do_code_enrichment,
+                do_formula_enrichment=docling_settings.do_formula_enrichment,
+                do_picture_classification=docling_settings.do_picture_classification,
+                do_picture_description=docling_settings.do_picture_description,
+                generate_page_images=docling_settings.generate_page_images,
+            )
         except ImportError as e:
             typer.echo(f"Error: {e}", err=True)
             raise typer.Exit(1)
@@ -339,6 +357,19 @@ def run(
         if hasattr(settings.zotero, "storage_dir") and settings.zotero.storage_dir:
             zotero_storage_dir = Path(settings.zotero.storage_dir)
         
+        # Prepare docling settings for windowed conversion
+        # Note: Settings are needed for windowed conversion detection
+        # We'll pass them via a closure or modify batch_import to accept settings
+        # For now, ingest_document will detect windowed conversion from converter type
+        
+        # Prepare docling settings dict for windowed conversion
+        docling_settings_dict = {
+            "enable_windowed_conversion": docling_settings.enable_windowed_conversion,
+            "force_windowed_conversion": docling_settings.force_windowed_conversion,
+            "window_size": docling_settings.window_size,
+            "checkpoint_enabled": docling_settings.checkpoint_enabled,
+        }
+        
         try:
             result = batch_import_from_zotero(
                 project_id=project,
@@ -351,6 +382,7 @@ def run(
                 embedder=embedder,
                 index=index,
                 embedding_model=model_id,
+                docling_settings=docling_settings_dict,
                 progress_reporter=progress_reporter,
                 checkpoint_manager=checkpoint_manager,
                 resume=resume,
@@ -482,7 +514,12 @@ def run(
     
     # Initialize adapters (shared across all documents)
     try:
-        converter: TextConverterPort = get_converter()
+        converter: TextConverterPort = get_converter(
+            document_timeout_seconds=docling_settings.document_timeout_seconds,
+            page_timeout_seconds=docling_settings.page_timeout_seconds,
+            cpu_threads=docling_settings.cpu_threads,
+            enable_gpu=docling_settings.enable_gpu,
+        )
     except ImportError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
@@ -764,7 +801,12 @@ def process_downloads(
     
     # Initialize adapters
     try:
-        converter: TextConverterPort = get_converter()
+        converter: TextConverterPort = get_converter(
+            document_timeout_seconds=docling_settings.document_timeout_seconds,
+            page_timeout_seconds=docling_settings.page_timeout_seconds,
+            cpu_threads=docling_settings.cpu_threads,
+            enable_gpu=docling_settings.enable_gpu,
+        )
     except ImportError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)

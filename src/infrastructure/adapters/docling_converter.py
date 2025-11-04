@@ -46,11 +46,27 @@ class DoclingConverterAdapter:
     # Default OCR languages (priority: Zotero metadata → explicit config → default)
     DEFAULT_OCR_LANGUAGES = ['en', 'de']
     
-    # Timeout limits (from spec clarifications)
-    DOCUMENT_TIMEOUT_SECONDS = 120
-    PAGE_TIMEOUT_SECONDS = 10
+    # Default timeout limits (can be overridden via settings)
+    DEFAULT_DOCUMENT_TIMEOUT_SECONDS = 600  # 10 minutes for CPU-only processing
+    DEFAULT_PAGE_TIMEOUT_SECONDS = 15
     
-    def __init__(self):
+    def __init__(
+        self,
+        document_timeout_seconds: int | None = None,
+        page_timeout_seconds: int | None = None,
+        cpu_threads: int | None = None,
+        enable_gpu: bool = False,
+        use_fast_table_mode: bool = True,
+        enable_remote_services: bool = False,
+        artifacts_path: str | None = None,
+        do_table_structure: bool = True,
+        do_ocr: bool = True,
+        do_code_enrichment: bool = False,
+        do_formula_enrichment: bool = False,
+        do_picture_classification: bool = False,
+        do_picture_description: bool = False,
+        generate_page_images: bool = False,
+    ):
         if not DOCLING_AVAILABLE:
             raise ImportError(
                 "Docling is not available on Windows (Python 3.12). "
@@ -61,7 +77,23 @@ class DoclingConverterAdapter:
                 "3. Wait for Windows support from docling/deepsearch-glm"
             )
         
-        # Initialize DocumentConverter with OCR support
+        # Store configuration
+        self.DOCUMENT_TIMEOUT_SECONDS = document_timeout_seconds or self.DEFAULT_DOCUMENT_TIMEOUT_SECONDS
+        self.PAGE_TIMEOUT_SECONDS = page_timeout_seconds or self.DEFAULT_PAGE_TIMEOUT_SECONDS
+        self.cpu_threads = cpu_threads
+        self.enable_gpu = enable_gpu
+        self.use_fast_table_mode = use_fast_table_mode
+        self.enable_remote_services = enable_remote_services
+        self.artifacts_path = artifacts_path
+        self.do_table_structure = do_table_structure
+        self.do_ocr = do_ocr
+        self.do_code_enrichment = do_code_enrichment
+        self.do_formula_enrichment = do_formula_enrichment
+        self.do_picture_classification = do_picture_classification
+        self.do_picture_description = do_picture_description
+        self.generate_page_images = generate_page_images
+        
+        # Initialize DocumentConverter with OCR support and acceleration options
         self._initialize_converter()
     
     def _initialize_converter(self) -> None:
@@ -91,13 +123,87 @@ class DoclingConverterAdapter:
             if DoclingPipelineOptions:
                 pipeline_options = DoclingPipelineOptions()
                 
-                # Enable OCR for scanned documents
-                # Note: Docling automatically detects if OCR is needed
-                # We configure OCR languages via pipeline options
+                # Configure CPU threads for acceleration (if specified)
+                if self.cpu_threads is not None:
+                    # Try to set CPU thread budget if available in runtime options
+                    try:
+                        if hasattr(pipeline_options, 'runtime'):
+                            if hasattr(pipeline_options.runtime, 'cpu_threads'):
+                                pipeline_options.runtime.cpu_threads = self.cpu_threads
+                                logger.info(f"Configured CPU threads: {self.cpu_threads}")
+                        elif hasattr(pipeline_options, 'cpu_threads'):
+                            pipeline_options.cpu_threads = self.cpu_threads
+                            logger.info(f"Configured CPU threads: {self.cpu_threads}")
+                    except Exception as e:
+                        logger.warning(f"Could not set CPU threads: {e}. Using default.")
+                
+                # Configure GPU acceleration (if enabled and available)
+                if self.enable_gpu:
+                    try:
+                        if hasattr(pipeline_options, 'runtime'):
+                            if hasattr(pipeline_options.runtime, 'enable_gpu'):
+                                pipeline_options.runtime.enable_gpu = True
+                                logger.info("GPU acceleration enabled")
+                        elif hasattr(pipeline_options, 'enable_gpu'):
+                            pipeline_options.enable_gpu = True
+                            logger.info("GPU acceleration enabled")
+                    except Exception as e:
+                        logger.warning(f"Could not enable GPU acceleration: {e}. Continuing with CPU.")
+                
+                # Configure PDF pipeline options with CPU-optimized settings
                 if PdfPipelineOptions:
-                    pdf_options = PdfPipelineOptions()
-                    # Enable OCR detection and processing
+                    try:
+                        # Try to import TableFormerMode for FAST mode
+                        from docling.datamodel.pipeline_options import TableFormerMode
+                        table_mode = TableFormerMode.FAST if self.use_fast_table_mode else TableFormerMode.ACCURATE
+                    except ImportError:
+                        # TableFormerMode not available, use default
+                        table_mode = None
+                        logger.debug("TableFormerMode not available, using default table extraction mode")
+                    
+                    # Build PDF pipeline options with CPU optimization
+                    pdf_options_kwargs: dict[str, Any] = {}
+                    
+                    # Set artifacts path for local model caching (faster startup)
+                    if self.artifacts_path:
+                        pdf_options_kwargs["artifacts_path"] = self.artifacts_path
+                    
+                    # Configure table structure extraction with FAST mode for CPU
+                    if self.do_table_structure:
+                        pdf_options_kwargs["do_table_structure"] = True
+                        if table_mode is not None:
+                            pdf_options_kwargs["table_structure_options"] = {
+                                "mode": table_mode
+                            }
+                    else:
+                        pdf_options_kwargs["do_table_structure"] = False
+                    
+                    # OCR configuration (auto-detected if needed, but we can enable it)
+                    pdf_options_kwargs["do_ocr"] = self.do_ocr
+                    
+                    # Disable expensive features for CPU-only processing (faster)
+                    pdf_options_kwargs["do_code_enrichment"] = self.do_code_enrichment
+                    pdf_options_kwargs["do_formula_enrichment"] = self.do_formula_enrichment
+                    pdf_options_kwargs["do_picture_classification"] = self.do_picture_classification
+                    pdf_options_kwargs["do_picture_description"] = self.do_picture_description
+                    pdf_options_kwargs["generate_page_images"] = self.generate_page_images
+                    
+                    # Security: Disable remote services (prevents external API calls)
+                    pdf_options_kwargs["enable_remote_services"] = self.enable_remote_services
+                    
+                    # Create PDF pipeline options
+                    pdf_options = PdfPipelineOptions(**pdf_options_kwargs)
                     pipeline_options.pdf = pdf_options
+                    
+                    logger.info(
+                        f"PDF pipeline configured: table_structure={self.do_table_structure}, "
+                        f"table_mode={'FAST' if self.use_fast_table_mode else 'ACCURATE'}, "
+                        f"ocr={self.do_ocr}, remote_services={self.enable_remote_services}"
+                    )
+                
+                # Log acceleration configuration
+                if self.cpu_threads or self.enable_gpu:
+                    logger.info(f"Docling acceleration: CPU threads={self.cpu_threads or 'auto'}, GPU={self.enable_gpu}")
                 
                 logger.info("Creating DocumentConverter instance (this may take 10-30 seconds on first run)...")
                 self.converter = DocumentConverter(
@@ -159,7 +265,7 @@ class DoclingConverterAdapter:
         # We ensure languages are available for OCR engine selection
         logger.debug(f"OCR configured with languages: {languages}")
     
-    def _convert_with_timeout(self, source_path: str) -> Any:
+    def _convert_with_timeout(self, source_path: str, page_range: tuple[int, int] | None = None) -> Any:
         """
         Convert document with timeout enforcement using ThreadPoolExecutor (T059, T060).
         
@@ -183,13 +289,17 @@ class DoclingConverterAdapter:
         - Note: If conversion is already executing when timeout occurs, it may continue
           in background thread until completion, but the result will not be returned
         """
-        def _perform_conversion() -> Any:
+        def _perform_conversion(page_range: tuple[int, int] | None = None) -> Any:
             """Perform the actual conversion in a separate thread."""
+            if page_range:
+                # Docling supports page_range parameter for windowed conversion
+                # Note: page_range is (start_page, end_page) - test inclusivity
+                return self.converter.convert(source_path, page_range=page_range)
             return self.converter.convert(source_path)
         
         # Use ThreadPoolExecutor for cross-platform timeout enforcement (T059, T060)
         with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_perform_conversion)
+            future = executor.submit(_perform_conversion, page_range)
             try:
                 # Wait for conversion with timeout - works on all platforms
                 result = future.result(timeout=self.DOCUMENT_TIMEOUT_SECONDS)
@@ -750,6 +860,7 @@ class DoclingConverterAdapter:
         source_path: str,
         ocr_languages: list[str] | None = None,
         progress_reporter: "ProgressReporterPort | None" = None,
+        page_range: tuple[int, int] | None = None,
     ) -> Mapping[str, Any]:
         """
         Convert a document at source_path into structured text and metadata.
@@ -758,6 +869,7 @@ class DoclingConverterAdapter:
             source_path: Path to source document (PDF, DOCX, PPTX, HTML, images)
             ocr_languages: Optional OCR language codes (priority: Zotero metadata → explicit config → default ['en', 'de'])
             progress_reporter: Optional progress reporter for document-level progress updates
+            page_range: Optional tuple (start_page, end_page) for windowed conversion (1-indexed, inclusive)
         
         Returns:
             ConversionResult-like dict with keys:
@@ -769,6 +881,10 @@ class DoclingConverterAdapter:
         Raises:
             ImportError: If docling is not available (Windows compatibility)
             TimeoutError: If conversion exceeds timeout (120s document, 10s per-page)
+        
+        Note:
+            When page_range is provided, only the specified page range will be converted.
+            This is useful for processing large documents in windows to avoid timeouts.
         """
         if not DOCLING_AVAILABLE:
             raise ImportError("Docling is not installed. See __init__ error for details.")
@@ -794,6 +910,13 @@ class DoclingConverterAdapter:
             extra={"source_path": source_path, "ocr_languages": selected_languages},
         )
         
+        # Log page range if specified
+        if page_range:
+            logger.info(
+                f"Converting document pages {page_range[0]}-{page_range[1]}: {source_path}",
+                extra={"source_path": source_path, "page_range": page_range},
+            )
+        
         # T031, T032: Initialize document-level progress if reporter provided
         doc_progress: "DocumentProgressContext | None" = None
         if progress_reporter:
@@ -814,12 +937,33 @@ class DoclingConverterAdapter:
         
         try:
             # Log conversion start with progress indication
-            logger.info(f"Starting document conversion pipeline (this may take a moment, especially for large PDFs)...")
+            logger.info(
+                f"Starting document conversion pipeline (timeout: {self.DOCUMENT_TIMEOUT_SECONDS}s, "
+                f"this may take a moment, especially for large PDFs)..."
+            )
+            
+            # T034: Update progress with timeout information
+            if doc_progress:
+                doc_progress.update_stage(
+                    "converting",
+                    f"Converting document (timeout: {self.DOCUMENT_TIMEOUT_SECONDS}s)..."
+                )
             
             # Convert with timeout enforcement
-            conversion_result = self._convert_with_timeout(source_path)
+            start_time = time.time()
+            conversion_result = self._convert_with_timeout(source_path, page_range=page_range)
+            conversion_time = time.time() - start_time
             
-            logger.info(f"Document conversion pipeline completed, extracting results...")
+            logger.info(
+                f"Document conversion pipeline completed in {conversion_time:.1f}s, extracting results..."
+            )
+            
+            # T034: Update progress
+            if doc_progress:
+                doc_progress.update_stage(
+                    "converting",
+                    f"Extracting document structure and text..."
+                )
             
             # Extract document object
             if hasattr(conversion_result, 'document'):
@@ -936,7 +1080,23 @@ class DoclingConverterAdapter:
             raise
 
 
-def get_converter(config_hash: str | None = None) -> DoclingConverterAdapter:
+def get_converter(
+    config_hash: str | None = None,
+    document_timeout_seconds: int | None = None,
+    page_timeout_seconds: int | None = None,
+    cpu_threads: int | None = None,
+    enable_gpu: bool = False,
+    use_fast_table_mode: bool = True,
+    enable_remote_services: bool = False,
+    artifacts_path: str | None = None,
+    do_table_structure: bool = True,
+    do_ocr: bool = True,
+    do_code_enrichment: bool = False,
+    do_formula_enrichment: bool = False,
+    do_picture_classification: bool = False,
+    do_picture_description: bool = False,
+    generate_page_images: bool = False,
+) -> DoclingConverterAdapter:
     """
     Get or create shared DoclingConverterAdapter instance (process-scoped).
     
@@ -963,11 +1123,36 @@ def get_converter(config_hash: str | None = None) -> DoclingConverterAdapter:
     Raises:
         ImportError: If Docling is not available (Windows compatibility)
     """
-    cache_key = f"converter:{config_hash or 'default'}"
+    # Include all settings in cache key to ensure correct configuration
+    cache_key = (
+        f"converter:{config_hash or 'default'}:"
+        f"timeout={document_timeout_seconds}:"
+        f"threads={cpu_threads}:"
+        f"gpu={enable_gpu}:"
+        f"fast_table={use_fast_table_mode}:"
+        f"remote={enable_remote_services}:"
+        f"table={do_table_structure}:"
+        f"ocr={do_ocr}"
+    )
     
     if cache_key not in _converter_cache:
         logger.debug(f"Creating new converter instance (cache_key={cache_key})")
-        _converter_cache[cache_key] = DoclingConverterAdapter()
+        _converter_cache[cache_key] = DoclingConverterAdapter(
+            document_timeout_seconds=document_timeout_seconds,
+            page_timeout_seconds=page_timeout_seconds,
+            cpu_threads=cpu_threads,
+            enable_gpu=enable_gpu,
+            use_fast_table_mode=use_fast_table_mode,
+            enable_remote_services=enable_remote_services,
+            artifacts_path=artifacts_path,
+            do_table_structure=do_table_structure,
+            do_ocr=do_ocr,
+            do_code_enrichment=do_code_enrichment,
+            do_formula_enrichment=do_formula_enrichment,
+            do_picture_classification=do_picture_classification,
+            do_picture_description=do_picture_description,
+            generate_page_images=generate_page_images,
+        )
     else:
         logger.debug(f"Reusing cached converter instance (cache_key={cache_key})")
     

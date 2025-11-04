@@ -61,6 +61,7 @@ def batch_import_from_zotero(
     zotero_source_mode: Strategy | None = None,
     zotero_local_db_path: Path | None = None,
     zotero_storage_dir: Path | None = None,
+    docling_settings: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Orchestrate batch import of documents from Zotero collection.
@@ -97,6 +98,7 @@ def batch_import_from_zotero(
         zotero_source_mode: Optional source routing strategy ("local-first", "web-first", "auto", "local-only", "web-only")
         zotero_local_db_path: Optional path to Zotero database file (for local adapter)
         zotero_storage_dir: Optional path to Zotero storage directory (for local adapter)
+        docling_settings: Optional Docling settings dict (enable_windowed_conversion, window_size, checkpoint_enabled)
     
     Returns:
         Dict with:
@@ -718,6 +720,22 @@ def batch_import_from_zotero(
         extra={"correlation_id": correlation_id, "total_attachments": total_attachments},
     )
     
+    # Disable Qdrant indexing for bulk upload optimization (if index supports it)
+    bulk_upload_mode = False
+    if index and hasattr(index, 'disable_indexing'):
+        try:
+            index.disable_indexing(project_id)
+            bulk_upload_mode = True
+            logger.info(
+                f"Disabled Qdrant indexing for bulk upload optimization (project: {project_id})",
+                extra={"correlation_id": correlation_id, "project_id": project_id},
+            )
+        except Exception as e:
+            logger.warning(
+                f"Could not disable indexing for bulk upload: {e}. Continuing without optimization.",
+                extra={"correlation_id": correlation_id, "project_id": project_id},
+            )
+    
     # Initialize batch progress if reporter provided
     batch_progress = None
     if progress_reporter:
@@ -924,6 +942,8 @@ def batch_import_from_zotero(
                 
                 # Process document through ingest pipeline
                 # T097: Pass zotero.item_key and zotero.attachment_key to ingest_document
+                # Pass docling_settings for windowed conversion (from function parameter)
+                
                 result: IngestResult = ingest_document(
                     request=ingest_request,
                     converter=converter,
@@ -940,6 +960,7 @@ def batch_import_from_zotero(
                     attachment_key=attachment.attachment_key,
                     prefer_zotero_fulltext=prefer_zotero_fulltext,
                     item_key=item_key,
+                    docling_settings=docling_settings,
                 )
                 
                 total_chunks += result.chunks_written
@@ -1203,6 +1224,20 @@ def batch_import_from_zotero(
     # Finish batch progress
     if batch_progress:
         batch_progress.finish()
+    
+    # Re-enable Qdrant indexing after bulk upload completes
+    if bulk_upload_mode and index and hasattr(index, 'enable_indexing'):
+        try:
+            index.enable_indexing(project_id, threshold=20000)
+            logger.info(
+                f"Re-enabled Qdrant indexing after bulk upload (project: {project_id})",
+                extra={"correlation_id": correlation_id, "project_id": project_id},
+            )
+        except Exception as e:
+            logger.warning(
+                f"Could not re-enable indexing after bulk upload: {e}. Indexing may be disabled.",
+                extra={"correlation_id": correlation_id, "project_id": project_id},
+            )
     
     duration_seconds = (datetime.now() - start_time).total_seconds()
     
@@ -1665,6 +1700,7 @@ def process_downloaded_files(
     zotero_config: dict[str, Any] | None = None,
     audit_dir: Path | None = None,
     checkpoints_dir: Path | None = None,
+    docling_settings: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Process already-downloaded files from a download manifest.
@@ -1935,6 +1971,7 @@ def process_downloaded_files(
                 
                 # Process document through ingest pipeline
                 # T097: Pass zotero.item_key and zotero.attachment_key to ingest_document
+                # Pass docling_settings for windowed conversion support
                 result: IngestResult = ingest_document(
                     request=ingest_request,
                     converter=converter,
@@ -1951,6 +1988,7 @@ def process_downloaded_files(
                     attachment_key=attachment.attachment_key,
                     prefer_zotero_fulltext=prefer_zotero_fulltext_val,
                     item_key=item_key,
+                    docling_settings=docling_settings,
                 )
                 
                 total_chunks += result.chunks_written

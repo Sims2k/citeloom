@@ -162,7 +162,7 @@ class QdrantIndexAdapter:
                     collection_name=collection_name,
                     vectors_config=vectors_config,
                     optimizers_config={
-                        "indexing_threshold": 20000,
+                        "indexing_threshold": 20000,  # Default: enable indexing
                     },
                     hnsw_config={
                         "on_disk": on_disk_hnsw,
@@ -464,6 +464,118 @@ class QdrantIndexAdapter:
                 extra={"collection_name": collection_name},
             )
 
+    def disable_indexing(self, project_id: str) -> None:
+        """
+        Disable indexing for bulk uploads to improve performance.
+        
+        Sets indexing_threshold to 0 to disable indexing during bulk operations.
+        After bulk upload completes, call enable_indexing() to re-enable indexing.
+        
+        Args:
+            project_id: Project identifier (determines collection)
+        
+        Raises:
+            RuntimeError: If collection doesn't exist or update fails
+        """
+        collection_name = self._collection_name(project_id)
+        
+        if self._client is None:
+            # In-memory fallback: no-op
+            logger.debug(f"Indexing disable skipped (in-memory mode): {collection_name}")
+            return
+        
+        try:
+            # Check if collection exists first
+            collections = self._client.get_collections()
+            collection_exists = any(c.name == collection_name for c in collections.collections)
+            
+            if not collection_exists:
+                logger.debug(
+                    f"Collection '{collection_name}' does not exist yet. Indexing will be disabled when collection is created.",
+                    extra={"collection_name": collection_name},
+                )
+                return
+            
+            # Update collection to disable indexing (set indexing_threshold to 0)
+            self._client.update_collection(
+                collection_name=collection_name,
+                optimizers_config={
+                    "indexing_threshold": 0,  # Disable indexing during bulk upload
+                },
+            )
+            logger.info(
+                f"Disabled indexing for collection '{collection_name}' (bulk upload mode)",
+                extra={"collection_name": collection_name},
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to disable indexing for '{collection_name}': {e}. Continuing without optimization.",
+                extra={"collection_name": collection_name},
+            )
+            # Don't raise - this is an optimization, not critical
+    
+    def enable_indexing(self, project_id: str, threshold: int = 20000) -> None:
+        """
+        Re-enable indexing after bulk upload and trigger optimization.
+        
+        Sets indexing_threshold back to default (20000) and triggers index optimization.
+        This should be called after completing bulk uploads.
+        
+        Args:
+            project_id: Project identifier (determines collection)
+            threshold: Indexing threshold (default: 20000)
+        
+        Raises:
+            RuntimeError: If collection doesn't exist or update fails
+        """
+        collection_name = self._collection_name(project_id)
+        
+        if self._client is None:
+            # In-memory fallback: no-op
+            logger.debug(f"Indexing enable skipped (in-memory mode): {collection_name}")
+            return
+        
+        try:
+            # Check if collection exists first
+            collections = self._client.get_collections()
+            collection_exists = any(c.name == collection_name for c in collections.collections)
+            
+            if not collection_exists:
+                logger.debug(
+                    f"Collection '{collection_name}' does not exist yet. Indexing will be enabled when collection is created.",
+                    extra={"collection_name": collection_name},
+                )
+                return
+            
+            # Re-enable indexing (set indexing_threshold back to default)
+            self._client.update_collection(
+                collection_name=collection_name,
+                optimizers_config={
+                    "indexing_threshold": threshold,
+                },
+            )
+            
+            # Trigger optimization to build index
+            # Note: Qdrant will automatically optimize when threshold is reached
+            # We can also explicitly trigger optimization if needed
+            try:
+                # Get collection info to check if optimization is needed
+                collection_info = self._client.get_collection(collection_name)
+                if collection_info.points_count > 0:
+                    logger.info(
+                        f"Re-enabled indexing for collection '{collection_name}' (threshold: {threshold})",
+                        extra={"collection_name": collection_name, "points_count": collection_info.points_count},
+                    )
+            except Exception:
+                pass  # Ignore errors in info retrieval
+            
+        except Exception as e:
+            logger.warning(
+                f"Failed to enable indexing for '{collection_name}': {e}. Indexing may be disabled.",
+                extra={"collection_name": collection_name},
+            )
+            # Don't raise - this is an optimization, not critical
+    
     def upsert(
         self,
         items: Sequence[Mapping[str, Any]],
@@ -471,6 +583,7 @@ class QdrantIndexAdapter:
         model_id: str,
         force_rebuild: bool = False,
         sparse_model_id: str | None = None,
+        bulk_mode: bool = False,
     ) -> None:
         """
         Upsert chunks into project collection.
@@ -701,7 +814,7 @@ class QdrantIndexAdapter:
                         extra={"collection_name": collection_name, "model_id": model_id},
                     )
                 
-                return  # Success
+                return  # Success - exit retry loop
             except Exception as e:
                 last_error = e
                 if attempt < max_retries - 1:
