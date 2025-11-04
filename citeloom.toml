@@ -24,13 +24,15 @@ audit_dir = "var/audit"
 [zotero]
 # Source selection strategy: "local-first", "web-first", "auto", "local-only", "web-only"
 # Default: "web-first" (backward compatible, migrates to "auto" after rollout)
-mode = "web-first"
+mode = "local-first"
 
 # Optional: Override Zotero database path (auto-detected if not specified)
 # db_path = "C:/Users/YourName/AppData/Roaming/Zotero/Profiles/xxxxx.default/zotero/zotero.sqlite"
+db_path = "C:/Users/Simon/Zotero/zotero.sqlite"
 
 # Optional: Override Zotero storage directory (auto-detected if not specified)
 # storage_dir = "C:/Users/YourName/AppData/Roaming/Zotero/Profiles/xxxxx.default/zotero/storage"
+storage_dir = "C:/Users/Simon/Zotero/storage"
 
 # Whether to index PDF annotations (highlights, comments) as separate vector points
 # Default: false (opt-in to avoid storage bloat)
@@ -44,8 +46,8 @@ prefer_zotero_fulltext = true
 # Zotero Web API credentials (required for remote access)
 # Can also be set via environment variables: ZOTERO_LIBRARY_ID, ZOTERO_API_KEY
 # Environment variables take precedence over TOML values
-library_id = ""
-api_key = ""
+library_id = "17690499"
+api_key = "uy9m8H4KHlTH6DZFLvMlF6lx"
 
 [zotero.fulltext]
 # Minimum text length for quality validation (default: 100 characters)

@@ -52,7 +52,13 @@ class ZoteroPyzoteroResolver:
         library_type = zotero_config.get("library_type") or get_env("ZOTERO_LIBRARY_TYPE") or "user"
         
         # Check if local access is requested
-        use_local = zotero_config.get("local", False) or get_env_bool("ZOTERO_LOCAL", False)
+        # Priority: explicit config > environment variable > default (False)
+        if "local" in zotero_config:
+            # Explicit config value takes precedence
+            use_local = bool(zotero_config.get("local", False))
+        else:
+            # Only check environment if not explicitly set in config
+            use_local = get_env_bool("ZOTERO_LOCAL", False)
         
         if not library_id:
             # Client not initialized - will handle gracefully in resolve()

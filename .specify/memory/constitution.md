@@ -350,22 +350,39 @@ Operating Procedure (Humans & Agents)
 ---
 
 ### Milestone: 005-zotero-improvements (Comprehensive Zotero Integration Improvements)
-**Branch**: `005-zotero-improvements` | **Status**: ✅ Planning Complete (2025-01-27)
+**Branch**: `005-zotero-improvements` | **Status**: ✅ In Progress (2025-11-04)
 
 **Scope**: 8 user stories with 130 tasks across 11 phases (MVP: 43 tasks for offline library browsing).
 
 **Core Planned Features**:
-- **Local SQLite Database Access (US1)**: `LocalZoteroDbAdapter` with platform-aware profile detection (Windows/macOS/Linux), immutable read-only snapshot isolation (SQLite URI mode with `immutable=1&mode=ro`), recursive CTE queries for subcollections, linkMode resolution (imported vs linked files), path resolution for attachment storage. CLI commands: `list-collections` (hierarchical with item counts), `browse-collection` (first N items with metadata), `recent-items`, `list-tags` (with usage counts). Error handling: `ZoteroDatabaseLockedError`, `ZoteroDatabaseNotFoundError`, `ZoteroProfileNotFoundError`, `ZoteroPathResolutionError`.
+- **Local SQLite Database Access (US1)**: `LocalZoteroDbAdapter` with platform-aware profile detection (Windows/macOS/Linux), immutable read-only snapshot isolation (SQLite URI mode with `immutable=1&mode=ro`), recursive CTE queries for subcollections, linkMode resolution (imported vs linked files), path resolution for attachment storage. CLI commands: `list-collections` (hierarchical with item counts), `browse-collection` (first N items with metadata), `recent-items`, `list-tags` (with usage counts). Error handling: `ZoteroDatabaseLockedError`, `ZoteroDatabaseNotFoundError`, `ZoteroProfileNotFoundError`, `ZoteroPathResolutionError`. ✅ **Implemented**: Old schema fallback support for pre-migration databases, migration detection with clear user guidance.
 - **Full-Text Reuse (US2)**: `ZoteroFulltextResolverAdapter` querying `fulltext` table via SQLite, quality validation (non-empty, minimum 100 chars, structure checks), page-level mixed provenance tracking (`pages_from_zotero`, `pages_from_docling`), sequential page concatenation for mixed text, preference-based resolution (Zotero preference → Docling fallback). Integration into `ingest_document` use case before Docling conversion, skipping conversion when fulltext available but proceeding with chunking/embedding/indexing. Expected 50-80% speedup.
 - **Annotation Indexing (US3)**: `ZoteroAnnotationResolverAdapter` fetching annotations via Web API `children()` method (`itemType=annotation`), normalization (pageIndex → page, extract quote/comment/color/tags), retry logic with exponential backoff (3 retries, base 1s, max 30s, jitter), graceful skipping on unavailability. Annotation payload structure with `type:annotation` tag, `zotero.item_key`, `zotero.attachment_key`, `zotero.annotation.*` fields. Opt-in configuration (`include_annotations=false` default).
 - **Incremental Deduplication (US4)**: `ContentFingerprint` entity with `content_hash`, `file_mtime`, `file_size`, `embedding_model`, `chunking_policy_version`, `embedding_policy_version`. `ContentFingerprintService` computing fingerprints and detecting unchanged documents. Skip logic: skip processing if both hash AND metadata match; if hash matches but metadata differs, treat as changed (collision protection). Policy version checking invalidates fingerprints on policy changes. Stores fingerprint in `DownloadManifestAttachment` after download and processing.
-- **Source Router (US5)**: `ZoteroSourceRouter` application service with strategy modes: `local-first` (per-file fallback to Web API), `web-first` (fallback to local DB on rate limits), `auto` (intelligent selection: prefer local if DB available and files exist, prefer web if local unavailable, smart selection based on speed/completeness), `local-only` (strict, no fallback), `web-only` (strict, backward compatible). Stores source markers (`"local" | "web"`) in `DownloadManifestAttachment.source` field. Per-file fallback strategy.
+- **Source Router (US5)**: `ZoteroSourceRouter` application service with strategy modes: `local-first` (per-file fallback to Web API), `web-first` (fallback to local DB on rate limits), `auto` (intelligent selection: prefer local if DB available and files exist, prefer web if local unavailable, smart selection based on speed/completeness), `local-only` (strict, no fallback), `web-only` (strict, backward compatible). Stores source markers (`"local" | "web"`) in `DownloadManifestAttachment.source` field. Per-file fallback strategy. ✅ **Implemented**: Automatic collection key format conversion (web ↔ local), comprehensive strategy testing, subcollection duplicate prevention.
 - **Library Exploration (US6)**: Enhanced CLI commands with hierarchical collection structure, tag usage counts, recent items with metadata, publication years and creators in browse view. All operations work offline using local database.
 - **Zotero Key Enrichment (US7)**: Enhanced chunk payloads with `zotero.item_key` and `zotero.attachment_key` fields, keyword indexes on both fields in `QdrantIndexAdapter.ensure_collection()`, query filtering by Zotero keys. Performance target: < 500ms for 10k chunks.
 - **Embedding Model Diagnostics (US8)**: Enhanced `EmbeddingModelMismatch` error messages with collection name and resolution instructions, `--show-embedding-model` option in inspect command, embedding model display in MCP inspect tool response.
 
-**Status**: Planning and task generation complete. All design artifacts (spec.md, plan.md, research.md, data-model.md, contracts/) generated. 130 tasks organized by user story. Ready for implementation.
+**Status**: Core infrastructure implemented (local adapter, source router, old schema fallback). Planning and task generation complete. All design artifacts (spec.md, plan.md, research.md, data-model.md, contracts/) generated. 130 tasks organized by user story. Implementation in progress.
 
 ---
 
-**Version**: 1.15.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-11-03 (Enhanced milestone documentation with technical details from tasks.md: Added Milestone 004 (zotero-batch-import) implementation details, enhanced Milestone 005 (zotero-improvements) with 8 user stories technical specifications)
+---
+
+### Milestone: 006-fix-zotero-docling (Zotero & Docling Performance and Correctness Fixes)
+**Branch**: `006-fix-zotero-docling` | **Status**: ✅ Complete (2025-11-04)
+
+**Core Accomplishments**:
+- **Zotero Source Strategy Enhancements**: Implemented automatic collection key format conversion in `ZoteroSourceRouter` enabling seamless routing between local (numeric IDs) and web (alphanumeric keys) adapters. All source selection strategies (`local-first`, `web-first`, `auto`, `local-only`, `web-only`) now work with both key formats transparently. ✅ **Fixed**: Collection key format mismatch issue.
+- **Subcollection Handling**: Fixed duplicate item prevention when including subcollections. Both local and web adapters now correctly handle nested subcollections with proper recursive traversal and duplicate detection. Verified with complex hierarchies (parent → subcollection → nested subcollections).
+- **Adapter Consistency**: Implemented consistent attachment filtering across local and web adapters. Web adapter now filters out `attachment` and `annotation` item types to match local adapter behavior, ensuring identical results for same collections.
+- **Old Schema Fallback**: Comprehensive fallback support for Zotero databases before migration (Zotero 7+ pre-migration). System automatically detects old schema (`itemData` table) and uses normalized queries to reconstruct item metadata, enabling full functionality even when database migration hasn't completed.
+- **Migration Detection**: Enhanced database migration detection with clear, actionable error messages. System detects when Zotero 7+ is installed but database hasn't migrated, providing specific guidance: "Open Zotero desktop application once to trigger database migration."
+- **Comprehensive Testing**: Created extensive test suite verifying all source strategies, edge cases, subcollection handling, and adapter consistency. All strategies tested and verified working correctly with both key formats.
+
+**Status**: ✅ Complete - All critical Zotero integration issues resolved, production-ready with seamless local/web adapter interoperability.
+
+---
+
+**Version**: 1.16.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2025-11-04 (Added Milestone 006 (fix-zotero-docling) implementation details: collection key format conversion, subcollection handling, adapter consistency, old schema fallback, migration detection)

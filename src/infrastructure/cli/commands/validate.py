@@ -496,12 +496,13 @@ def _display_results_table(results: list[dict[str, Any]]) -> None:
     table.add_column("Message", style="white")
     
     for result in results:
+        # Use ASCII-safe characters for Windows compatibility
         status_style = {
-            "PASS": "[green]✓ PASS[/green]",
-            "FAIL": "[red]✗ FAIL[/red]",
-            "WARN": "[yellow]⚠ WARN[/yellow]",
-            "ERROR": "[red]✗ ERROR[/red]",
-            "SKIP": "[dim]⊘ SKIP[/dim]",
+            "PASS": "[green][PASS][/green]",
+            "FAIL": "[red][FAIL][/red]",
+            "WARN": "[yellow][WARN][/yellow]",
+            "ERROR": "[red][ERROR][/red]",
+            "SKIP": "[dim][SKIP][/dim]",
         }.get(result["status"], result["status"])
         
         table.add_row(

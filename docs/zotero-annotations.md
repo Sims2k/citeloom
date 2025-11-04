@@ -153,3 +153,4 @@ For large collections (1000+ documents), annotation indexing can significantly i
 - [Querying Chunks](../README.md#query-chunks)
 - [Full-Text Reuse](./zotero-fulltext-reuse.md)
 
+

@@ -182,3 +182,4 @@ If conversion is slow:
 
 **Windows is fully supported** for document conversion and processing. The main limitation is that Docling's HybridChunker is not available, but the manual chunking fallback works well for most use cases. If you need exact HybridChunker behavior, use WSL or Docker.
 
+

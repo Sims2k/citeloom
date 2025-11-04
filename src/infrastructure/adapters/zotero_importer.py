@@ -59,7 +59,13 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
         library_type = zotero_config.get("library_type") or get_env("ZOTERO_LIBRARY_TYPE") or "user"
 
         # Check if local access is requested
-        use_local = zotero_config.get("local", False) or get_env_bool("ZOTERO_LOCAL", False)
+        # Priority: explicit config > environment variable > default (False)
+        if "local" in zotero_config:
+            # Explicit config value takes precedence
+            use_local = bool(zotero_config.get("local", False))
+        else:
+            # Only check environment if not explicitly set in config
+            use_local = get_env_bool("ZOTERO_LOCAL", False)
 
         if not library_id:
             raise ZoteroConnectionError(
@@ -248,14 +254,31 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
         if self.zot is None:
             raise ZoteroConnectionError("Zotero client not initialized. Client initialization failed")
 
-        def _fetch_items() -> Any:
+        def _fetch_items(seen_keys: set[str] | None = None) -> Any:
             self._rate_limit()
+            # Use provided seen_keys or create new set (for tracking duplicates across recursive calls)
+            if seen_keys is None:
+                seen_keys = set()
+            
             try:
                 # Get items in collection
                 items = self.zot.collection_items(collection_key)  # type: ignore[union-attr]
 
-                # Yield items from this collection
+                # Yield items from this collection (filter out attachments and annotations)
                 for item in items:
+                    item_data = item.get("data", {})
+                    item_type = item_data.get("itemType", "")
+                    item_key = item.get("key", "")
+                    
+                    # Filter out attachments and annotations (consistent with local adapter)
+                    if item_type in ("attachment", "annotation"):
+                        continue
+                    
+                    # Avoid duplicates when including subcollections
+                    if item_key and item_key in seen_keys:
+                        continue
+                    seen_keys.add(item_key)
+                    
                     yield item
 
                 # If including subcollections, recursively fetch items
@@ -266,8 +289,8 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
                         for subcoll in subcollections:
                             subcoll_key = subcoll.get("data", {}).get("key", "")
                             if subcoll_key:
-                                # Recursively yield items from subcollections
-                                for item in self.get_collection_items(subcoll_key, include_subcollections=True):
+                                # Recursively fetch items from subcollections (pass seen_keys to avoid duplicates)
+                                for item in self._fetch_items_for_collection(subcoll_key, seen_keys, include_subcollections=True):
                                     yield item
                     except Exception as e:
                         logger.warning(
@@ -286,7 +309,66 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
                 ) from e
 
         # Return generator that applies retry logic
-        return self._retry_with_backoff(_fetch_items)
+        return self._retry_with_backoff(lambda: _fetch_items())
+
+    def _fetch_items_for_collection(
+        self,
+        collection_key: str,
+        seen_keys: set[str],
+        include_subcollections: bool = False,
+    ) -> Any:
+        """
+        Internal helper to fetch items from a collection with shared seen_keys set.
+        
+        This ensures duplicate items are not yielded when recursively fetching subcollections.
+        """
+        self._rate_limit()
+        try:
+            # Get items in collection
+            items = self.zot.collection_items(collection_key)  # type: ignore[union-attr]
+
+            # Yield items from this collection (filter out attachments and annotations)
+            for item in items:
+                item_data = item.get("data", {})
+                item_type = item_data.get("itemType", "")
+                item_key = item.get("key", "")
+                
+                # Filter out attachments and annotations (consistent with local adapter)
+                if item_type in ("attachment", "annotation"):
+                    continue
+                
+                # Avoid duplicates
+                if item_key and item_key in seen_keys:
+                    continue
+                seen_keys.add(item_key)
+                
+                yield item
+
+            # If including subcollections, recursively fetch items
+            if include_subcollections:
+                try:
+                    self._rate_limit()
+                    subcollections = self.zot.collections_sub(collection_key)  # type: ignore[union-attr]
+                    for subcoll in subcollections:
+                        subcoll_key = subcoll.get("data", {}).get("key", "")
+                        if subcoll_key:
+                            # Recursively fetch items from subcollections (pass same seen_keys)
+                            for item in self._fetch_items_for_collection(subcoll_key, seen_keys, include_subcollections=True):
+                                yield item
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to fetch subcollections for {collection_key}: {e}",
+                        extra={"collection_key": collection_key, "error": str(e)},
+                    )
+                    # Continue without subcollections
+        except Exception as e:
+            error_str = str(e).lower()
+            if "rate" in error_str or "limit" in error_str or "429" in error_str:
+                raise ZoteroRateLimitError("Zotero API rate limit exceeded", retry_after=60) from e
+            raise ZoteroAPIError(
+                f"Failed to get collection items: {e}",
+                details={"collection_key": collection_key, "error": str(e)},
+            ) from e
 
     def get_item_attachments(self, item_key: str) -> list[dict[str, Any]]:
         """

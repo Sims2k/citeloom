@@ -124,3 +124,4 @@ class TestDoclingTimeout:
         assert elapsed < 1.0, f"Fast conversion should complete in <1s, took {elapsed}s"
         assert result is not None
 
+
