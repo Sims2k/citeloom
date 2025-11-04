@@ -224,6 +224,7 @@ Operating Procedure (Humans & Agents)
 - **On-disk HNSW**: Enable HNSW on-disk when vectors are on-disk for consistent memory optimization.
 - **On-disk payload & indices**: Optional for very large metadata sets to further reduce memory usage.
 - **Scalar quantization**: Consider int8 quantization with memmap for throughput-critical scenarios while maintaining acceptable recall.
+- **Bulk indexing optimization**: For large batch uploads, disable HNSW indexing during bulk ingest (`indexing_threshold=0`) and re-enable after all chunks are uploaded (`indexing_threshold=20000`). This enables faster bulk uploads with single optimization pass after ingest completes.
 
 **Idempotency & Deterministic IDs**
 - Generate deterministic chunk IDs from: `(doc_id, page_span/section_path, embedding_model_id, chunk_idx)`.
