@@ -59,7 +59,13 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
         library_type = zotero_config.get("library_type") or get_env("ZOTERO_LIBRARY_TYPE") or "user"
 
         # Check if local access is requested
-        use_local = zotero_config.get("local", False) or get_env_bool("ZOTERO_LOCAL", False)
+        # Priority: explicit config > environment variable > default (False)
+        if "local" in zotero_config:
+            # Explicit config value takes precedence
+            use_local = bool(zotero_config.get("local", False))
+        else:
+            # Only check environment if not explicitly set in config
+            use_local = get_env_bool("ZOTERO_LOCAL", False)
 
         if not library_id:
             raise ZoteroConnectionError(
@@ -108,9 +114,20 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
 
         # Rate limiting state
         self._last_request_time = 0.0
+        
+        # API call tracking for summary logging (T052a)
+        self._api_call_count = 0
+        self._api_call_start_time: float | None = None
 
     def _rate_limit(self) -> None:
         """Apply rate limiting for web API requests (0.5s minimum interval)."""
+        # Track API call start time for summary logging (T052a)
+        if self._api_call_start_time is None:
+            self._api_call_start_time = time.time()
+        
+        # Increment API call counter (T052a)
+        self._api_call_count += 1
+        
         if self.local:
             return  # No rate limiting for local API
 
@@ -237,14 +254,31 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
         if self.zot is None:
             raise ZoteroConnectionError("Zotero client not initialized. Client initialization failed")
 
-        def _fetch_items() -> Any:
+        def _fetch_items(seen_keys: set[str] | None = None) -> Any:
             self._rate_limit()
+            # Use provided seen_keys or create new set (for tracking duplicates across recursive calls)
+            if seen_keys is None:
+                seen_keys = set()
+            
             try:
                 # Get items in collection
                 items = self.zot.collection_items(collection_key)  # type: ignore[union-attr]
 
-                # Yield items from this collection
+                # Yield items from this collection (filter out attachments and annotations)
                 for item in items:
+                    item_data = item.get("data", {})
+                    item_type = item_data.get("itemType", "")
+                    item_key = item.get("key", "")
+                    
+                    # Filter out attachments and annotations (consistent with local adapter)
+                    if item_type in ("attachment", "annotation"):
+                        continue
+                    
+                    # Avoid duplicates when including subcollections
+                    if item_key and item_key in seen_keys:
+                        continue
+                    seen_keys.add(item_key)
+                    
                     yield item
 
                 # If including subcollections, recursively fetch items
@@ -255,8 +289,8 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
                         for subcoll in subcollections:
                             subcoll_key = subcoll.get("data", {}).get("key", "")
                             if subcoll_key:
-                                # Recursively yield items from subcollections
-                                for item in self.get_collection_items(subcoll_key, include_subcollections=True):
+                                # Recursively fetch items from subcollections (pass seen_keys to avoid duplicates)
+                                for item in self._fetch_items_for_collection(subcoll_key, seen_keys, include_subcollections=True):
                                     yield item
                     except Exception as e:
                         logger.warning(
@@ -275,7 +309,66 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
                 ) from e
 
         # Return generator that applies retry logic
-        return self._retry_with_backoff(_fetch_items)
+        return self._retry_with_backoff(lambda: _fetch_items())
+
+    def _fetch_items_for_collection(
+        self,
+        collection_key: str,
+        seen_keys: set[str],
+        include_subcollections: bool = False,
+    ) -> Any:
+        """
+        Internal helper to fetch items from a collection with shared seen_keys set.
+        
+        This ensures duplicate items are not yielded when recursively fetching subcollections.
+        """
+        self._rate_limit()
+        try:
+            # Get items in collection
+            items = self.zot.collection_items(collection_key)  # type: ignore[union-attr]
+
+            # Yield items from this collection (filter out attachments and annotations)
+            for item in items:
+                item_data = item.get("data", {})
+                item_type = item_data.get("itemType", "")
+                item_key = item.get("key", "")
+                
+                # Filter out attachments and annotations (consistent with local adapter)
+                if item_type in ("attachment", "annotation"):
+                    continue
+                
+                # Avoid duplicates
+                if item_key and item_key in seen_keys:
+                    continue
+                seen_keys.add(item_key)
+                
+                yield item
+
+            # If including subcollections, recursively fetch items
+            if include_subcollections:
+                try:
+                    self._rate_limit()
+                    subcollections = self.zot.collections_sub(collection_key)  # type: ignore[union-attr]
+                    for subcoll in subcollections:
+                        subcoll_key = subcoll.get("data", {}).get("key", "")
+                        if subcoll_key:
+                            # Recursively fetch items from subcollections (pass same seen_keys)
+                            for item in self._fetch_items_for_collection(subcoll_key, seen_keys, include_subcollections=True):
+                                yield item
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to fetch subcollections for {collection_key}: {e}",
+                        extra={"collection_key": collection_key, "error": str(e)},
+                    )
+                    # Continue without subcollections
+        except Exception as e:
+            error_str = str(e).lower()
+            if "rate" in error_str or "limit" in error_str or "429" in error_str:
+                raise ZoteroRateLimitError("Zotero API rate limit exceeded", retry_after=60) from e
+            raise ZoteroAPIError(
+                f"Failed to get collection items: {e}",
+                details={"collection_key": collection_key, "error": str(e)},
+            ) from e
 
     def get_item_attachments(self, item_key: str) -> list[dict[str, Any]]:
         """
@@ -355,93 +448,71 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         def _download_file() -> Path:
-            if self.local:
-                # Local API: Access files directly from Zotero storage directory
-                # Zotero stores files in ~/Zotero/storage/{item_key}/{attachment_key}/
-                # or ~/Zotero/storage/{item_key}/{filename}
-                import os
-                from pathlib import Path
+            # Both local and remote API use zot.file() method
+            # Local API goes through Better BibTeX JSON-RPC which handles file access
+            self._rate_limit()
+            try:
+                # Download file content via API (works for both local and remote)
+                # pyzotero file() method takes only the attachment key as positional argument
+                file_data = self.zot.file(attachment_key)  # type: ignore[union-attr]
 
-                zotero_storage = Path.home() / "Zotero" / "storage"
-
-                # Try different possible paths
-                possible_paths = [
-                    zotero_storage / item_key / attachment_key,
-                    zotero_storage / item_key,
-                ]
-
-                # Get attachment metadata to find filename
-                try:
-                    self._rate_limit()
-                    attachment_data = self.zot.item(attachment_key)  # type: ignore[union-attr]
-                    filename = attachment_data.get("data", {}).get("filename", "")
-                    if filename:
-                        possible_paths.insert(0, zotero_storage / item_key / filename)
-                except Exception:
-                    pass
-
-                # Look for PDF files in the item directory
-                item_dir = zotero_storage / item_key
-                if item_dir.exists():
-                    for file_path in item_dir.rglob("*.pdf"):
-                        # Copy file to output path
-                        shutil.copy2(file_path, output_path)
-                        logger.info(
-                            f"Downloaded attachment from local storage: {output_path}",
-                            extra={"item_key": item_key, "attachment_key": attachment_key, "output_path": str(output_path)},
+                # Write to output path
+                with output_path.open("wb") as f:
+                    if isinstance(file_data, bytes):
+                        f.write(file_data)
+                    elif hasattr(file_data, "read"):
+                        f.write(file_data.read())
+                    else:
+                        raise ZoteroAPIError(
+                            f"Unexpected file data type: {type(file_data)}",
+                            details={"item_key": item_key, "attachment_key": attachment_key},
                         )
-                        return output_path
 
-                raise ZoteroAPIError(
-                    f"Attachment file not found in local Zotero storage for item {item_key}",
-                    details={"item_key": item_key, "attachment_key": attachment_key, "storage_path": str(zotero_storage)},
+                api_type = "local" if self.local else "remote"
+                logger.info(
+                    f"Downloaded attachment from {api_type} API: {output_path}",
+                    extra={"item_key": item_key, "attachment_key": attachment_key, "output_path": str(output_path), "api_type": api_type},
                 )
+                return output_path
 
-            else:
-                # Remote API: Use zot.file() to download
-                self._rate_limit()
-                try:
-                    # Download file content
-                    file_data = self.zot.file(item_key, attachment_key)  # type: ignore[union-attr]
-
-                    # Write to output path
-                    with output_path.open("wb") as f:
-                        if isinstance(file_data, bytes):
-                            f.write(file_data)
-                        elif hasattr(file_data, "read"):
-                            f.write(file_data.read())
-                        else:
-                            raise ZoteroAPIError(
-                                f"Unexpected file data type: {type(file_data)}",
-                                details={"item_key": item_key, "attachment_key": attachment_key},
-                            )
-
-                    logger.info(
-                        f"Downloaded attachment from remote API: {output_path}",
-                        extra={"item_key": item_key, "attachment_key": attachment_key, "output_path": str(output_path)},
-                    )
-                    return output_path
-
-                except Exception as e:
-                    error_str = str(e).lower()
-                    if "rate" in error_str or "limit" in error_str or "429" in error_str:
-                        raise ZoteroRateLimitError("Zotero API rate limit exceeded", retry_after=60) from e
+            except Exception as e:
+                error_str = str(e).lower()
+                if "rate" in error_str or "limit" in error_str or "429" in error_str:
+                    raise ZoteroRateLimitError("Zotero API rate limit exceeded", retry_after=60) from e
+                if "not found" in error_str or "404" in error_str or "does not exist" in error_str:
                     raise ZoteroAPIError(
-                        f"Failed to download attachment: {e}",
+                        f"Attachment not found: {e}",
                         details={"item_key": item_key, "attachment_key": attachment_key, "error": str(e)},
                     ) from e
+                raise ZoteroAPIError(
+                    f"Failed to download attachment: {e}",
+                    details={"item_key": item_key, "attachment_key": attachment_key, "error": str(e)},
+                ) from e
 
         return self._retry_with_backoff(_download_file, max_retries=3, base_delay=1.0, max_delay=30.0, jitter=True)
 
-    def get_item_metadata(self, item_key: str) -> dict[str, Any]:
+    def get_item_metadata(
+        self,
+        item_key: str,
+        collection_cache: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """
-        Get full metadata for a Zotero item.
+        Get full metadata for a Zotero item with optional collection cache to avoid redundant lookups.
         
         Args:
             item_key: Zotero item key
+            collection_cache: Optional command-scoped cache for collection metadata
+                - Key: collection_key (str)
+                - Value: collection metadata dict from Zotero API
         
         Returns:
             Item metadata dict with keys: title, creators (authors), date (year), DOI, tags, collections
+        
+        Behavior:
+            - Fetch item metadata from API
+            - If item belongs to collections, check collection_cache before fetching collection info
+            - Use cached collection metadata if available, otherwise fetch and cache
+            - Return item metadata with collection names resolved
         
         Raises:
             ZoteroConnectionError: If connection fails
@@ -488,20 +559,31 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
                         elif isinstance(tag_obj, str):
                             tags.append(tag_obj)
 
-                # Extract collections
+                # Extract collections - use cache if available
                 collections: list[str] = []
                 collection_keys = item_data.get("collections", [])
                 if isinstance(collection_keys, list) and collection_keys:
                     try:
-                        # Fetch collection names by key
+                        # Fetch collection names by key - check cache first
                         for coll_key in collection_keys:
                             try:
-                                self._rate_limit()
-                                coll = self.zot.collection(coll_key)  # type: ignore[union-attr]
-                                coll_data = coll.get("data", {})
-                                coll_name = coll_data.get("name", "")
-                                if coll_name:
-                                    collections.append(coll_name)
+                                # Check cache first
+                                if collection_cache and coll_key in collection_cache:
+                                    coll_data = collection_cache[coll_key]
+                                    coll_name = coll_data.get("name", "")
+                                    if coll_name:
+                                        collections.append(coll_name)
+                                else:
+                                    # Cache miss - fetch and cache
+                                    self._rate_limit()
+                                    coll = self.zot.collection(coll_key)  # type: ignore[union-attr]
+                                    coll_data = coll.get("data", {})
+                                    coll_name = coll_data.get("name", "")
+                                    if coll_name:
+                                        collections.append(coll_name)
+                                    # Cache if cache provided
+                                    if collection_cache is not None:
+                                        collection_cache[coll_key] = coll_data
                             except Exception:
                                 # Collection fetch failed, skip
                                 pass
@@ -509,6 +591,30 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
                         # Collection fetching not available or failed
                         pass
 
+                # Extract additional metadata fields
+                # Publication/journal information (for journal articles, book chapters, etc.)
+                publication_title = (
+                    item_data.get("publicationTitle") or
+                    item_data.get("journalAbbreviation") or
+                    item_data.get("publication") or
+                    item_data.get("bookTitle") or
+                    None
+                )
+                
+                # Volume, issue, pages (for journal articles)
+                volume = item_data.get("volume")
+                issue = item_data.get("issue")
+                pages = item_data.get("pages")
+                
+                # URL for web resources
+                url = item_data.get("url") or item_data.get("URL")
+                
+                # Language
+                language = item_data.get("language")
+                
+                # Item type
+                item_type = item_data.get("itemType", "")
+                
                 return {
                     "title": title,
                     "creators": creators,
@@ -517,6 +623,13 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
                     "DOI": doi,
                     "tags": tags,
                     "collections": collections,
+                    "publicationTitle": publication_title,
+                    "volume": volume,
+                    "issue": issue,
+                    "pages": pages,
+                    "url": url,
+                    "language": language,
+                    "itemType": item_type,
                 }
 
             except Exception as e:
@@ -548,13 +661,27 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
             self._rate_limit()
             try:
                 tags = self.zot.tags()  # type: ignore[union-attr]
-                return [
-                    {
-                        "tag": tag.get("tag", ""),
-                        "meta": tag.get("meta", {}),
-                    }
-                    for tag in tags
-                ]
+                result = []
+                for tag in tags:
+                    # Handle both dict and string formats from pyzotero
+                    if isinstance(tag, dict):
+                        result.append({
+                            "tag": tag.get("tag", ""),
+                            "meta": tag.get("meta", {}),
+                        })
+                    elif isinstance(tag, str):
+                        # Tags can be returned as simple strings
+                        result.append({
+                            "tag": tag,
+                            "meta": {},
+                        })
+                    else:
+                        # Fallback: convert to string
+                        result.append({
+                            "tag": str(tag),
+                            "meta": {},
+                        })
+                return result
             except Exception as e:
                 error_str = str(e).lower()
                 if "rate" in error_str or "limit" in error_str or "429" in error_str:
@@ -593,6 +720,124 @@ class ZoteroImporterAdapter(ZoteroImporterPort):
 
         return self._retry_with_backoff(_fetch_recent_items)
 
+    def get_collection_info(
+        self,
+        collection_name_or_key: str,
+        collection_cache: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Get collection information with optional command-scoped cache.
+        
+        Args:
+            collection_name_or_key: Collection name or key identifier
+            collection_cache: Optional command-scoped cache for collection metadata
+                - Key: collection_key (str)
+                - Value: collection metadata dict from Zotero API
+        
+        Returns:
+            Collection information dict with keys: key, name, metadata
+        
+        Behavior:
+            - If collection_cache provided and collection_key found, return cached data
+            - Otherwise, fetch from API, cache if collection_cache provided, return data
+            - Cache key: collection_key from API response
+        """
+        if self.zot is None:
+            raise ZoteroConnectionError("Zotero client not initialized. Client initialization failed")
+
+        # Check if it's a collection key (8 alphanumeric chars) or name
+        if len(collection_name_or_key) == 8 and collection_name_or_key.isalnum():
+            # It's a key - check cache first
+            collection_key = collection_name_or_key
+            if collection_cache and collection_key in collection_cache:
+                cached = collection_cache[collection_key]
+                return {
+                    "key": cached.get("key", collection_key),
+                    "name": cached.get("name", ""),
+                    "metadata": cached,
+                }
+            
+            # Fetch from API
+            def _fetch_by_key() -> dict[str, Any]:
+                self._rate_limit()
+                try:
+                    coll = self.zot.collection(collection_key)  # type: ignore[union-attr]
+                    coll_data = coll.get("data", {})
+                    coll_key = coll_data.get("key", collection_key)
+                    coll_name = coll_data.get("name", "")
+                    
+                    result = {
+                        "key": coll_key,
+                        "name": coll_name,
+                        "metadata": coll_data,
+                    }
+                    
+                    # Cache if cache provided
+                    if collection_cache is not None:
+                        collection_cache[coll_key] = coll_data
+                    
+                    return result
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if "rate" in error_str or "limit" in error_str or "429" in error_str:
+                        raise ZoteroRateLimitError("Zotero API rate limit exceeded", retry_after=60) from e
+                    raise ZoteroAPIError(
+                        f"Failed to get collection info: {e}",
+                        details={"collection_key": collection_key, "error": str(e)},
+                    ) from e
+            
+            return self._retry_with_backoff(_fetch_by_key)
+        else:
+            # It's a name - find by name first
+            found = self.find_collection_by_name(collection_name_or_key)
+            if found:
+                coll_key = found.get("key", "")
+                if coll_key:
+                    # Use get_collection_info recursively with key (will check cache)
+                    return self.get_collection_info(coll_key, collection_cache=collection_cache)
+            else:
+                raise ZoteroAPIError(
+                    f"Collection not found: {collection_name_or_key}",
+                    details={"collection_name_or_key": collection_name_or_key},
+                )
+
+    def get_api_call_summary(self) -> dict[str, Any] | None:
+        """
+        Get summary of API calls made since tracking started.
+        
+        Returns:
+            Dict with 'count' and 'duration_seconds', or None if no calls made
+        """
+        if self._api_call_count == 0 or self._api_call_start_time is None:
+            return None
+        
+        duration = time.time() - self._api_call_start_time
+        return {
+            "count": self._api_call_count,
+            "duration_seconds": duration,
+        }
+    
+    def reset_api_call_tracking(self) -> None:
+        """Reset API call tracking counters."""
+        self._api_call_count = 0
+        self._api_call_start_time = None
+    
+    def log_api_call_summary(self) -> None:
+        """
+        Log summary of API calls made (T052a).
+        
+        Logs at INFO level with format: "Made N API calls in X seconds"
+        """
+        summary = self.get_api_call_summary()
+        if summary:
+            logger.info(
+                f"Made {summary['count']} API call(s) in {summary['duration_seconds']:.1f} seconds",
+                extra={
+                    "api_call_count": summary["count"],
+                    "duration_seconds": summary["duration_seconds"],
+                },
+            )
+    
     def find_collection_by_name(self, collection_name: str) -> dict[str, Any] | None:
         """
         Find collection by name (case-insensitive partial match).

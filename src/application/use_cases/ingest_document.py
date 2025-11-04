@@ -200,9 +200,11 @@ def ingest_document(
         if doc_progress:
             doc_progress.update_stage("converting", "Converting document to text")
         try:
+            # T035: Pass progress_reporter to converter for document-level progress
             conversion = converter.convert(
                 request.source_path,
                 ocr_languages=ocr_languages,
+                progress_reporter=progress_reporter,
             )
             doc_id = conversion.get("doc_id", "unknown")
             logger.info(

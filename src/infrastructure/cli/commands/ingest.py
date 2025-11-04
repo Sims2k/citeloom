@@ -18,7 +18,7 @@ from src.application.ports.vector_index import VectorIndexPort
 from src.application.ports.checkpoint_manager import CheckpointManagerPort
 from src.application.ports.progress_reporter import ProgressReporterPort
 from src.infrastructure.adapters.checkpoint_manager import CheckpointManagerAdapter
-from src.infrastructure.adapters.docling_converter import DoclingConverterAdapter
+from src.infrastructure.adapters.docling_converter import DoclingConverterAdapter, get_converter
 from src.infrastructure.adapters.docling_chunker import DoclingHybridChunkerAdapter
 from src.infrastructure.adapters.fastembed_embeddings import FastEmbedAdapter
 from src.infrastructure.adapters.qdrant_index import QdrantIndexAdapter
@@ -50,6 +50,7 @@ def run(
     keep_checkpoints: bool = typer.Option(False, help="Explicitly keep checkpoint files (default: retain checkpoints). Mutually exclusive with --cleanup-checkpoints."),
     prefer_zotero_fulltext: bool = typer.Option(True, help="Prefer Zotero fulltext when available (default: True). Set to False to always use Docling conversion."),
     include_annotations: bool = typer.Option(False, help="Extract and index PDF annotations from Zotero (default: False). Only valid with --zotero-collection."),
+    include_subcollections: bool = typer.Option(True, help="Include items from subcollections when importing from Zotero (default: True). Only valid with --zotero-collection."),
     zotero_source_mode: str | None = typer.Option(None, help="Zotero source routing mode: 'local-first', 'web-first', 'auto', 'local-only', 'web-only' (default: from settings or 'web-first' for backward compatibility). Only valid with --zotero-collection."),
 ):
     """
@@ -90,6 +91,11 @@ def run(
     # Validate include_annotations flag (only valid for Zotero imports)
     if include_annotations and not zotero_collection:
         typer.echo("Error: --include-annotations is only valid with --zotero-collection", err=True)
+        raise typer.Exit(1)
+    
+    # Validate include_subcollections flag (only valid for Zotero imports)
+    if include_subcollections and not zotero_collection:
+        typer.echo("Error: --include-subcollections is only valid with --zotero-collection", err=True)
         raise typer.Exit(1)
     
     # Validate zotero_source_mode flag (only valid for Zotero imports)
@@ -144,27 +150,69 @@ def run(
     
     # Handle Zotero collection import if requested
     if zotero_collection:
-        # Initialize Zotero importer
+        # Initialize Zotero adapters for collection resolution
+        # We'll create source router later, but need to resolve collection first
         try:
-            zotero_importer = ZoteroImporterAdapter(zotero_config=zotero_config_dict)
+            # Build web adapter config from settings if not provided
+            if zotero_config_dict is None:
+                # Use settings to build web adapter config
+                zotero_config_dict = {
+                    "library_id": settings.zotero.web.library_id,
+                    "api_key": settings.zotero.web.api_key,
+                    "local": False,  # Explicitly disable local mode for web adapter
+                }
+            else:
+                # Ensure local mode is False when using web API
+                zotero_config_dict["local"] = False
+            
+            web_adapter = ZoteroImporterAdapter(zotero_config=zotero_config_dict)
         except Exception as e:
-            typer.echo(f"Error initializing Zotero importer: {e}", err=True)
+            typer.echo(f"Error initializing Zotero web adapter: {e}", err=True)
             raise typer.Exit(1)
+        
+        # Try local adapter for collection resolution (if available)
+        local_adapter = None
+        try:
+            from src.infrastructure.adapters.zotero_local_db import LocalZoteroDbAdapter
+            db_path = None
+            storage_dir = None
+            if settings.zotero.db_path:
+                db_path = Path(settings.zotero.db_path)
+            if settings.zotero.storage_dir:
+                storage_dir = Path(settings.zotero.storage_dir)
+            local_adapter = LocalZoteroDbAdapter(db_path=db_path, storage_dir=storage_dir)
+        except Exception:
+            # Local adapter not available, will use web adapter
+            pass
         
         # Resolve collection key if name provided
         collection_key = None
         collection_name = None
         if len(zotero_collection) == 8 and zotero_collection.isalnum():
-            # Looks like a collection key (8 alphanumeric chars)
-            collection_key = zotero_collection
-        else:
-            # Try to find by name (enhanced error handling for typos)
+            # Looks like a collection key (8 alphanumeric chars) - check if it's numeric (local) or alphanumeric (web)
             try:
-                collection_info = zotero_importer.find_collection_by_name(zotero_collection)
-                if collection_info:
-                    collection_key = collection_info.get("key")
-                    collection_name = collection_info.get("name", zotero_collection)
-                else:
+                # Try as numeric (local adapter format)
+                int(zotero_collection)
+                collection_key = zotero_collection
+            except ValueError:
+                # Alphanumeric key (web adapter format)
+                collection_key = zotero_collection
+        else:
+            # Try to find by name - prefer local adapter if available
+            try:
+                if local_adapter:
+                    collection_info = local_adapter.find_collection_by_name(zotero_collection)
+                    if collection_info:
+                        collection_key = collection_info.get("key")
+                        collection_name = collection_info.get("name", zotero_collection)
+                if not collection_key:
+                    # Fallback to web adapter
+                    collection_info = web_adapter.find_collection_by_name(zotero_collection)
+                    if collection_info:
+                        collection_key = collection_info.get("key")
+                        collection_name = collection_info.get("name", zotero_collection)
+                
+                if not collection_key:
                     # Collection name not found - suggest checking for typos
                     error_msg = (
                         f"Error: Collection '{zotero_collection}' not found.\n"
@@ -194,12 +242,15 @@ def run(
                 typer.echo(error_msg, err=True)
                 raise typer.Exit(1)
         
+        # Store web adapter for later use (will be replaced by source router)
+        zotero_importer = web_adapter
+        
         # Get audit directory from settings
         audit_dir = Path(settings.paths.audit_dir)
         
         # Initialize adapters for batch import
         try:
-            converter: TextConverterPort = DoclingConverterAdapter()
+            converter: TextConverterPort = get_converter()
         except ImportError as e:
             typer.echo(f"Error: {e}", err=True)
             raise typer.Exit(1)
@@ -210,7 +261,19 @@ def run(
             typer.echo(f"Error: {e}", err=True)
             raise typer.Exit(1)
         
-        resolver: MetadataResolverPort = ZoteroPyzoteroResolver(zotero_config=zotero_config_dict)
+        # Build resolver config from settings (same as web adapter)
+        resolver_config = zotero_config_dict.copy() if zotero_config_dict else {}
+        if not resolver_config or "local" not in resolver_config:
+            resolver_config = {
+                "library_id": settings.zotero.web.library_id,
+                "api_key": settings.zotero.web.api_key,
+                "local": False,  # Explicitly disable local mode for web API
+            }
+            if zotero_config_dict:
+                resolver_config.update(zotero_config_dict)
+        resolver_config["local"] = False  # Ensure remote mode
+        
+        resolver: MetadataResolverPort = ZoteroPyzoteroResolver(zotero_config=resolver_config)
         embedder: EmbeddingPort = FastEmbedAdapter(default_model=model_id)
         index: VectorIndexPort = QdrantIndexAdapter(url=settings.qdrant.url)
         
@@ -299,6 +362,7 @@ def run(
                 checkpoints_dir=checkpoints_dir,
                 prefer_zotero_fulltext=prefer_zotero_fulltext_value,
                 include_annotations=include_annotations_value,
+                include_subcollections=include_subcollections,
                 annotation_resolver=annotation_resolver,
                 zotero_source_mode=zotero_source_mode_value,  # type: ignore[arg-type]
                 zotero_local_db_path=zotero_local_db_path,
@@ -418,7 +482,7 @@ def run(
     
     # Initialize adapters (shared across all documents)
     try:
-        converter: TextConverterPort = DoclingConverterAdapter()
+        converter: TextConverterPort = get_converter()
     except ImportError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
@@ -700,7 +764,7 @@ def process_downloads(
     
     # Initialize adapters
     try:
-        converter: TextConverterPort = DoclingConverterAdapter()
+        converter: TextConverterPort = get_converter()
     except ImportError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)

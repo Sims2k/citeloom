@@ -420,10 +420,80 @@ ZOTERO_LOCAL=true
 - **Local**: Requires `ZOTERO_LOCAL=true` and Zotero desktop app running
 - Local library ID is typically `0` or `1` for user library
 
+### Windows-Specific Zotero Local Database Configuration
+
+On Windows, CiteLoom automatically detects your Zotero profile by checking these locations in order:
+1. `%APPDATA%\Zotero\Profiles\{profile_id}\zotero.sqlite`
+2. `%LOCALAPPDATA%\Zotero\Profiles\{profile_id}\zotero.sqlite`
+3. `%USERPROFILE%\Documents\Zotero\Profiles\{profile_id}\zotero.sqlite`
+
+**If auto-detection fails**, you can manually configure the database path in `citeloom.toml`:
+
+```toml
+[zotero]
+# Windows example: Typical location in AppData\Roaming
+db_path = "C:\\Users\\YourName\\AppData\\Roaming\\Zotero\\Profiles\\xxxxx.default\\zotero.sqlite"
+storage_dir = "C:\\Users\\YourName\\AppData\\Roaming\\Zotero\\Profiles\\xxxxx.default\\zotero\\storage"
+```
+
+**Finding Your Zotero Profile Path on Windows**:
+
+1. **Method 1: Using Zotero Desktop**
+   - Open Zotero
+   - Go to `Help` → `Show Data Directory`
+   - This opens the profile folder in Windows Explorer
+   - Note the path (e.g., `C:\Users\YourName\AppData\Roaming\Zotero\Profiles\xxxxx.default`)
+   - The database file is `zotero.sqlite` in that folder
+
+2. **Method 2: Using File Explorer**
+   - Press `Win + R` to open Run dialog
+   - Type `%APPDATA%\Zotero\Profiles` and press Enter
+   - Look for a folder with a name like `xxxxx.default` (where `xxxxx` is random characters)
+   - Open that folder to find `zotero.sqlite`
+
+3. **Method 3: Check Alternative Locations**
+   - If not found in `%APPDATA%`, check `%LOCALAPPDATA%\Zotero\Profiles`
+   - Or check `%USERPROFILE%\Documents\Zotero\Profiles`
+
+**Troubleshooting Windows Profile Detection**:
+
+- **"Zotero profile not found" error**:
+  - Ensure Zotero desktop has been run at least once (creates the profile)
+  - Verify the profile path exists in File Explorer
+  - Check if you have multiple Zotero profiles and use the correct one
+  - Try manually specifying `db_path` in `citeloom.toml`
+
+- **"Database is locked" error**:
+  - Close Zotero desktop application
+  - Wait a few seconds for Zotero to release the database lock
+  - Try the command again
+
+- **"Database file not found" error**:
+  - Verify the path in `citeloom.toml` is correct (use double backslashes `\\` or forward slashes `/`)
+  - Check that `zotero.sqlite` exists at the specified path
+  - Ensure you have read permissions to the file
+
+- **Storage directory not found**:
+  - The storage directory is typically alongside the profile directory
+  - Look for `zotero\storage` subdirectory in the profile folder
+  - Or specify `storage_dir` explicitly in `citeloom.toml`
+
+**Example Windows Configuration**:
+
+```toml
+[zotero]
+# Full path to zotero.sqlite database file
+db_path = "C:\\Users\\John\\AppData\\Roaming\\Zotero\\Profiles\\a1b2c3d4.default\\zotero.sqlite"
+
+# Storage directory for attachment files (optional, auto-detected if not specified)
+storage_dir = "C:\\Users\\John\\AppData\\Roaming\\Zotero\\Profiles\\a1b2c3d4.default\\zotero\\storage"
+```
+
 **Important Notes**:
 - The `.env` file is automatically excluded from version control
 - Environment variables take precedence over `.env` file values
 - Never commit API keys to the repository
+- Windows paths can use either backslashes (`\\`) or forward slashes (`/`) in `citeloom.toml`
 
 ## Next Steps
 

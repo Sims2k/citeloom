@@ -42,12 +42,13 @@ class CorrelationIDFilter(logging.Filter):
         return True
 
 
-def configure_logging(level: int = logging.INFO) -> None:
+def configure_logging(level: int = logging.INFO, verbose: bool = False) -> None:
     """
     Configure structured logging with correlation ID support.
     
     Args:
         level: Logging level (default: INFO)
+        verbose: If True, show HTTP logs at INFO level. If False, suppress HTTP logs to DEBUG.
     """
     handler = logging.StreamHandler(sys.stdout)
     formatter = logging.Formatter(
@@ -61,3 +62,25 @@ def configure_logging(level: int = logging.INFO) -> None:
     root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(level)
+    
+    # Configure HTTP client logging to respect verbose mode
+    # httpx is used by pyzotero for HTTP requests
+    # httpcore is the underlying HTTP library used by httpx
+    http_loggers = [
+        "httpx",
+        "httpcore",
+        "httpcore.http11",
+        "httpcore.http2",
+        "httpcore.connection",
+    ]
+    
+    if verbose:
+        # In verbose mode, allow INFO level HTTP logs
+        for logger_name in http_loggers:
+            http_logger = logging.getLogger(logger_name)
+            http_logger.setLevel(logging.INFO)
+    else:
+        # In default mode, suppress HTTP logs to DEBUG level
+        for logger_name in http_loggers:
+            http_logger = logging.getLogger(logger_name)
+            http_logger.setLevel(logging.DEBUG)

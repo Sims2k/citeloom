@@ -11,7 +11,7 @@ from src.application.dto.query import QueryRequest
 from src.application.use_cases.query_chunks import query_chunks
 from src.application.ports.embeddings import EmbeddingPort
 from src.application.ports.vector_index import VectorIndexPort
-from src.domain.errors import ProjectNotFound
+from src.domain.errors import ProjectNotFound, HybridNotSupported
 from src.infrastructure.adapters.fastembed_embeddings import FastEmbedAdapter
 from src.infrastructure.adapters.qdrant_index import QdrantIndexAdapter
 from src.infrastructure.config.settings import Settings
@@ -76,8 +76,41 @@ def run(
         console.print(f"[yellow]Note: If using in-memory fallback (Qdrant not running), data doesn't persist between commands.[/yellow]")
         console.print(f"[yellow]Start Qdrant server or use Qdrant Cloud for persistent storage.[/yellow]")
         raise typer.Exit(code=1)
+    except HybridNotSupported as e:
+        # T047, T048a: Improve error message when query fails due to model binding
+        console.print(f"[red]Hybrid search not supported for project '{project}': {e.reason}[/red]")
+        
+        # Provide actionable guidance based on the reason
+        if "model not bound" in str(e.reason).lower() or "set_model" in str(e.reason).lower():
+            console.print(f"\n[yellow]Model binding issue detected.[/yellow]")
+            console.print(f"[cyan]Resolution options:[/cyan]")
+            console.print(f"  1. [bold]Automatic fix (recommended):[/bold] Re-run ingestion to auto-bind model:")
+            console.print(f"     [dim]citeloom ingest run --project {project}[/dim]")
+            console.print(f"  2. [bold]Manual fix:[/bold] Bind model using Qdrant client or API")
+            console.print(f"  3. [bold]Check configuration:[/bold] Verify embedding model in project settings")
+            console.print(f"\n[dim]Note: Model binding is now automatic during ingestion. If you see this error,")
+            console.print(f"it may indicate the collection was created before auto-binding was implemented.[/dim]")
+        elif "full-text index not enabled" in str(e.reason).lower():
+            console.print(f"\n[yellow]Full-text index not enabled for hybrid search.[/yellow]")
+            console.print(f"[cyan]Resolution:[/cyan] Enable full-text index in project settings or Qdrant configuration")
+        else:
+            console.print(f"\n[cyan]Check project configuration for hybrid search settings.[/cyan]")
+        raise typer.Exit(code=1)
     except Exception as e:
-        console.print(f"[red]Query failed: {e}[/red]")
+        error_msg = str(e)
+        console.print(f"[red]Query failed: {error_msg}[/red]")
+        
+        # T047, T048a: Provide actionable guidance for model binding errors
+        if "model not bound" in error_msg.lower() or "set_model" in error_msg.lower():
+            console.print(f"\n[yellow]Model binding issue detected.[/yellow]")
+            console.print(f"[cyan]Resolution options:[/cyan]")
+            console.print(f"  1. [bold]Automatic fix (recommended):[/bold] Re-run ingestion to auto-bind model:")
+            console.print(f"     [dim]citeloom ingest run --project {project}[/dim]")
+            console.print(f"  2. [bold]Manual fix:[/bold] Bind model using Qdrant client or API")
+            console.print(f"  3. [bold]Check configuration:[/bold] Verify embedding model in project settings")
+            console.print(f"\n[dim]Note: Model binding is now automatic during ingestion. If you see this error,")
+            console.print(f"it may indicate the collection was created before auto-binding was implemented.[/dim]")
+        
         raise typer.Exit(code=1)
     
     # Format and display results

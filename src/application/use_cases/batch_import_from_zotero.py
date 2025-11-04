@@ -377,7 +377,59 @@ def batch_import_from_zotero(
                 }
             
             logger.info(
-                f"Found {len(items_to_process)} items in collection",
+                f"Found {len(items_to_process)} items from collection API",
+                extra={"correlation_id": correlation_id, "item_count": len(items_to_process)},
+            )
+            
+            # Filter out items that aren't actually in any collection (Zotero API quirk)
+            # Some items can appear in collection_items() even if they have no collections
+            filtered_items: list[dict[str, Any]] = []
+            items_without_collection = 0
+            for item in items_to_process:
+                item_data = item.get("data", {})
+                item_collections = item_data.get("collections", [])
+                
+                # Skip items that have no collections (they're not in any collection)
+                if not item_collections or len(item_collections) == 0:
+                    items_without_collection += 1
+                    logger.debug(
+                        f"Skipping item {item.get('key', 'unknown')}: not in any collection",
+                        extra={"correlation_id": correlation_id, "item_key": item.get("key", "")},
+                    )
+                    continue
+                
+                # Verify item is actually in the target collection (or subcollection)
+                item_in_collection = False
+                if collection_key in item_collections:
+                    item_in_collection = True
+                elif include_subcollections:
+                    # Check if item is in any subcollection (we'd need to fetch subcollection keys)
+                    # For now, if include_subcollections is True, trust the API response
+                    item_in_collection = True
+                
+                if item_in_collection:
+                    filtered_items.append(item)
+                else:
+                    items_without_collection += 1
+                    logger.debug(
+                        f"Skipping item {item.get('key', 'unknown')}: not in target collection",
+                        extra={"correlation_id": correlation_id, "item_key": item.get("key", "")},
+                    )
+            
+            items_to_process = filtered_items
+            
+            if items_without_collection > 0:
+                logger.info(
+                    f"Filtered out {items_without_collection} items not in collection (Zotero API returns all items)",
+                    extra={
+                        "correlation_id": correlation_id,
+                        "filtered_count": items_without_collection,
+                        "remaining_count": len(items_to_process),
+                    },
+                )
+            
+            logger.info(
+                f"Processing {len(items_to_process)} items after collection filtering",
                 extra={"correlation_id": correlation_id, "item_count": len(items_to_process)},
             )
         except Exception as e:
@@ -581,10 +633,12 @@ def batch_import_from_zotero(
                             exc_info=True,
                         )
                     
+                    # T063: Use resolved downloaded_path (accounts for duplicate filename handling with _1, _2 suffixes)
+                    # downloaded_path is the actual path after duplicate handling (lines 576-582)
                     manifest_attachment = DownloadManifestAttachment(
                         attachment_key=attachment_key,
-                        filename=filename,
-                        local_path=downloaded_path.resolve(),  # Ensure absolute path
+                        filename=downloaded_path.name,  # Use actual filename (may have _1, _2 suffix)
+                        local_path=downloaded_path.resolve(),  # Ensure absolute path with resolved duplicate suffix
                         download_status="success",
                         file_size=file_size,
                         content_fingerprint=content_fingerprint,

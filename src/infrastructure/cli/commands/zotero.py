@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -11,18 +12,19 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from ...application.ports.zotero_importer import ZoteroImporterPort
-from ...domain.errors import (
+from src.application.ports.zotero_importer import ZoteroImporterPort
+from src.domain.errors import (
     ZoteroAPIError,
     ZoteroConnectionError,
     ZoteroDatabaseLockedError,
     ZoteroDatabaseNotFoundError,
     ZoteroProfileNotFoundError,
 )
-from ...infrastructure.adapters.zotero_importer import ZoteroImporterAdapter
-from ...infrastructure.adapters.zotero_local_db import LocalZoteroDbAdapter
-from ...infrastructure.config.environment import load_environment_variables
-from ...infrastructure.config.settings import Settings
+from src.infrastructure.adapters.zotero_importer import ZoteroImporterAdapter
+from src.infrastructure.adapters.zotero_local_db import LocalZoteroDbAdapter
+from src.infrastructure.adapters.rich_progress_reporter import RichProgressReporterAdapter
+from src.infrastructure.config.environment import load_environment_variables
+from src.infrastructure.config.settings import Settings
 
 app = typer.Typer(help="Browse and explore Zotero library structure")
 console = Console()
@@ -56,7 +58,8 @@ def _get_zotero_adapter(config_path: str = "citeloom.toml") -> ZoteroImporterPor
     except (ZoteroProfileNotFoundError, ZoteroDatabaseNotFoundError, ZoteroDatabaseLockedError) as e:
         # Local adapter unavailable, fall back to web adapter
         logger.warning(f"Local adapter unavailable: {e}, falling back to web adapter")
-        console.print(f"[yellow]Note: Local database unavailable ({e.message}), using web API[/yellow]")
+        error_msg = str(e)
+        console.print(f"[yellow]Note: Local database unavailable ({error_msg}), using web API[/yellow]")
     except Exception as e:
         # Other errors - log but continue to try web adapter
         logger.warning(f"Failed to initialize local adapter: {e}, falling back to web adapter")
@@ -82,16 +85,23 @@ def _get_zotero_adapter(config_path: str = "citeloom.toml") -> ZoteroImporterPor
 
 @app.command()
 def list_collections(
-    subcollections: bool = typer.Option(False, "--subcollections", "-s", help="Show subcollection hierarchy"),
+    subcollections: bool = typer.Option(True, "--subcollections/--no-subcollections", "-s/-S", help="Show subcollection hierarchy (default: True)"),
 ) -> None:
     """
-    List all top-level collections in Zotero library with hierarchical structure.
+    List all collections in Zotero library with hierarchical structure and item counts.
+    
+    By default, shows all collections including subcollections. Use --no-subcollections to show only top-level collections.
     
     Examples:
         citeloom zotero list-collections
-        citeloom zotero list-collections --subcollections
+        citeloom zotero list-collections --no-subcollections
+        citeloom zotero list-collections -S
     """
     adapter = _get_zotero_adapter()
+    
+    # T052a: Reset API call tracking at start of command
+    if isinstance(adapter, ZoteroImporterAdapter):
+        adapter.reset_api_call_tracking()
     
     try:
         collections = adapter.list_collections()
@@ -100,12 +110,26 @@ def list_collections(
             console.print("[yellow]No collections found in Zotero library[/yellow]")
             return
         
-        # Build collection lookup by key
+        # Fetch item counts for each collection
         collection_map: dict[str, dict[str, Any]] = {}
         for coll in collections:
             key = coll.get("key", "")
             if key:
                 collection_map[key] = coll
+                # Initialize item_count if not present
+                if "item_count" not in coll:
+                    coll["item_count"] = 0
+        
+        # Count items in each collection
+        console.print("[dim]Counting items in collections...[/dim]")
+        for coll_key, coll_data in collection_map.items():
+            try:
+                # Count items in this collection (not including subcollections for the count)
+                items = list(adapter.get_collection_items(coll_key, include_subcollections=False))
+                coll_data["item_count"] = len(items)
+            except Exception as e:
+                logger.warning(f"Failed to count items for collection {coll_key}: {e}")
+                coll_data["item_count"] = 0
         
         # Build parent-child relationships
         children_map: dict[str, list[dict[str, Any]]] = {}
@@ -150,10 +174,12 @@ def list_collections(
                     name = coll_item.get("name", "")
                     key = coll_item.get("key", "")
                     item_count = coll_item.get("item_count", 0)
+                    # Use ASCII-safe characters for Windows compatibility
+                    prefix = "`- " if depth > 0 else ""
                     table.add_row(
-                        f"{indent}{'└─ ' if depth > 0 else ''}{name}",
+                        f"{indent}{prefix}{name}",
                         key,
-                        str(item_count) if item_count > 0 else "-",
+                        str(item_count) if item_count > 0 else "0",
                     )
         else:
             # Simple list of top-level collections only with item counts
@@ -173,18 +199,28 @@ def list_collections(
                 table.add_row(
                     coll.get("name", ""),
                     coll.get("key", ""),
-                    str(item_count) if item_count > 0 else "-",
+                    str(item_count) if item_count > 0 else "0",
                 )
         
         console.print(table)
+        
+        # T052a: Log API call summary at end of successful command
+        if isinstance(adapter, ZoteroImporterAdapter):
+            adapter.log_api_call_summary()
         
     except ZoteroAPIError as e:
         console.print(f"[red]Zotero API error: {e.message}[/red]")
         if e.details:
             console.print(f"[yellow]Details: {e.details}[/yellow]")
+        # T052a: Log API call summary even on error
+        if isinstance(adapter, ZoteroImporterAdapter):
+            adapter.log_api_call_summary()
         raise typer.Exit(code=1)
     except Exception as e:
         console.print(f"[red]Failed to list collections: {e}[/red]")
+        # T052a: Log API call summary even on error
+        if isinstance(adapter, ZoteroImporterAdapter):
+            adapter.log_api_call_summary()
         raise typer.Exit(code=1)
 
 
@@ -203,23 +239,44 @@ def browse_collection(
     """
     adapter = _get_zotero_adapter()
     
+    # T052a: Reset API call tracking at start of command
+    if isinstance(adapter, ZoteroImporterAdapter):
+        adapter.reset_api_call_tracking()
+    
     try:
-        # Find collection by name or use key directly
-        collection_key = collection
-        collection_name = collection
+        # T033: Track operation start time for progress indication
+        operation_start_time = time.time()
+        show_progress = False
+        progress_reporter: RichProgressReporterAdapter | None = None
+        batch_context: Any = None
         
-        # Try to find by name first (if not a valid key format)
-        if len(collection) > 8 or not collection.isalnum():
-            found = adapter.find_collection_by_name(collection)
-            if found:
-                collection_key = found.get("key", "")
-                collection_name = found.get("name", "")
-            else:
-                console.print(f"[yellow]Collection '{collection}' not found by name, trying as key...[/yellow]")
+        # Create command-scoped caches (T012, T013)
+        collection_cache: dict[str, dict[str, Any]] = {}
+        item_cache: dict[str, dict[str, Any]] = {}
+        
+        # Get collection info using get_collection_info() with cache (T014)
+        collection_info = adapter.get_collection_info(collection, collection_cache=collection_cache)
+        collection_key = collection_info["key"]
+        collection_name = collection_info["name"]
         
         # Get items
         all_items = list(adapter.get_collection_items(collection_key, include_subcollections=include_subcollections))
         items = all_items[:limit]  # Limit items displayed
+        
+        # T033: Check if operation is taking >5 seconds and show progress
+        elapsed_time = time.time() - operation_start_time
+        if elapsed_time > 5.0:
+            show_progress = True
+            progress_reporter = RichProgressReporterAdapter()
+            batch_context = progress_reporter.start_batch(
+                total_documents=len(items),
+                description=f"Browsing collection '{collection_name}'",
+            )
+            console.print(f"[yellow]Operation taking longer than expected, showing progress...[/yellow]")
+        
+        # T033: Update progress if showing
+        if show_progress and batch_context:
+            batch_context.update(len(items))
         
         if not all_items:
             console.print(f"[yellow]No items found in collection '{collection_name}'[/yellow]")
@@ -245,63 +302,51 @@ def browse_collection(
         table.add_column("Attachments", justify="right", style="magenta")
         table.add_column("Date Added", style="white")
         
+        # Use basic item data directly from collection items response for table (T017)
         for item in items:
             item_data = item.get("data", {})
             title = item_data.get("title", "(No title)")
             item_type = item_data.get("itemType", "unknown")
             item_key = item.get("key", "")
             
-            # Get metadata for enhanced display
-            try:
-                metadata = adapter.get_item_metadata(item_key)
+            # Extract creators directly from item_data (T017)
+            creators_list = item_data.get("creators", [])
+            if isinstance(creators_list, list) and creators_list:
+                creator_names = []
+                for c in creators_list[:2]:
+                    if isinstance(c, dict):
+                        # Try name field first (single string), then firstName/lastName
+                        if c.get("name"):
+                            creator_names.append(c.get("name", "").strip())
+                        else:
+                            first = c.get("firstName", "").strip()
+                            last = c.get("lastName", "").strip()
+                            full_name = f"{first} {last}".strip()
+                            if full_name:
+                                creator_names.append(full_name)
+                    else:
+                        creator_names.append(str(c))
                 
-                # Extract creators (authors)
-                creators = metadata.get("creators", [])
-                if isinstance(creators, list) and creators:
-                    creators_str = ", ".join(
-                        [
-                            f"{c.get('firstName', '')} {c.get('lastName', '')}".strip()
-                            if isinstance(c, dict)
-                            else str(c)
-                            for c in creators[:2]
-                        ]
-                    )
-                    if len(creators) > 2:
-                        creators_str += f" (+{len(creators) - 2})"
-                else:
+                creators_str = ", ".join([name for name in creator_names if name])
+                if len(creators_list) > 2:
+                    creators_str += f" (+{len(creators_list) - 2})"
+                
+                if not creators_str:
                     creators_str = "-"
-                
-                # Extract year
-                year = metadata.get("year")
-                year_str = str(year) if year else "-"
-            except Exception:
-                # Fallback to item_data if metadata unavailable
-                creators_list = item_data.get("creators", [])
-                if isinstance(creators_list, list) and creators_list:
-                    creators_str = ", ".join(
-                        [
-                            f"{c.get('firstName', '')} {c.get('lastName', '')}".strip()
-                            if isinstance(c, dict)
-                            else str(c)
-                            for c in creators_list[:2]
-                        ]
-                    )
-                    if len(creators_list) > 2:
-                        creators_str += f" (+{len(creators_list) - 2})"
-                else:
-                    creators_str = "-"
-                
-                # Try to extract year from date field
-                date_str = item_data.get("date", "")
-                year_str = "-"
-                if date_str:
-                    # Try to extract year from date string (YYYY-MM-DD or YYYY format)
-                    try:
-                        year_int = int(date_str[:4]) if len(date_str) >= 4 else None
-                        if year_int:
-                            year_str = str(year_int)
-                    except (ValueError, TypeError):
-                        pass
+            else:
+                creators_str = "-"
+            
+            # Extract year directly from item_data date field (T017)
+            date_str = item_data.get("date", "")
+            year_str = "-"
+            if date_str:
+                # Try to extract year from date string (YYYY-MM-DD or YYYY format)
+                try:
+                    year_int = int(date_str[:4]) if len(date_str) >= 4 else None
+                    if year_int:
+                        year_str = str(year_int)
+                except (ValueError, TypeError):
+                    pass
             
             # Get attachment count
             try:
@@ -327,21 +372,51 @@ def browse_collection(
         console.print(table)
         
         # Show metadata summary for first few items (up to 5)
+        # Use metadata already fetched during table building to avoid duplicate API calls
         summary_items = items[:5]
         if len(summary_items) > 0:
             console.print("\n[bold]Metadata Summary:[/bold]")
+            
             for item in summary_items:
+                item_key = item.get("key", "")
                 item_data = item.get("data", {})
-                metadata = adapter.get_item_metadata(item.get("key", ""))
-                console.print(f"\n[cyan]{metadata.get('title', '(No title)')}[/cyan]")
+                
+                # Use cached metadata first (already fetched during table building above) (T016)
+                metadata = item_cache.get(item_key)
+                if not metadata:
+                    # Only fetch if not already cached (fallback - should rarely happen)
+                    try:
+                        metadata = adapter.get_item_metadata(item_key, collection_cache=collection_cache)
+                        item_cache[item_key] = metadata  # Add to cache for consistency
+                    except Exception:
+                        # Fallback to item_data if metadata fetch fails
+                        metadata = {
+                            "title": item_data.get("title", "(No title)"),
+                            "creators": item_data.get("creators", []),
+                            "year": None,
+                            "DOI": item_data.get("DOI") or item_data.get("doi"),
+                            "tags": [tag.get("tag", "") if isinstance(tag, dict) else str(tag) for tag in item_data.get("tags", [])],
+                        }
+                
+                console.print(f"\n[cyan]{metadata.get('title', item_data.get('title', '(No title)'))}[/cyan]")
                 if metadata.get("creators"):
-                    creators_str = ", ".join(
-                        [
-                            f"{c.get('firstName', '')} {c.get('lastName', '')}".strip()
-                            for c in metadata.get("creators", [])[:3]
-                        ]
-                    )
-                    console.print(f"  Authors: {creators_str}")
+                    # Handle both formats: {firstName, lastName} and {name}
+                    creator_names = []
+                    for c in metadata.get("creators", [])[:3]:
+                        if isinstance(c, dict):
+                            if c.get("name"):
+                                creator_names.append(c.get("name", "").strip())
+                            else:
+                                first = c.get("firstName", "").strip()
+                                last = c.get("lastName", "").strip()
+                                full_name = f"{first} {last}".strip()
+                                if full_name:
+                                    creator_names.append(full_name)
+                        else:
+                            creator_names.append(str(c))
+                    creators_str = ", ".join([name for name in creator_names if name])
+                    if creators_str:
+                        console.print(f"  Authors: {creators_str}")
                 if metadata.get("year"):
                     console.print(f"  Year: {metadata.get('year')}")
                 if metadata.get("DOI"):
@@ -349,20 +424,51 @@ def browse_collection(
                 if metadata.get("tags"):
                     tags_str = ", ".join(metadata.get("tags", [])[:5])
                     console.print(f"  Tags: {tags_str}")
+                if metadata.get("publicationTitle"):
+                    console.print(f"  Publication: {metadata.get('publicationTitle')}")
+                if metadata.get("volume"):
+                    console.print(f"  Volume: {metadata.get('volume')}")
+                if metadata.get("issue"):
+                    console.print(f"  Issue: {metadata.get('issue')}")
+                if metadata.get("pages"):
+                    console.print(f"  Pages: {metadata.get('pages')}")
+                if metadata.get("url"):
+                    console.print(f"  URL: {metadata.get('url')}")
+                if metadata.get("language"):
+                    console.print(f"  Language: {metadata.get('language')}")
+        
+        # T033: Finish progress reporting if started
+        if show_progress and progress_reporter and batch_context:
+            batch_context.finish()
+            operation_duration = time.time() - operation_start_time
+            console.print(f"[green]Completed in {operation_duration:.1f}s[/green]")
+        
+        # T052a: Log API call summary if using web adapter
+        if isinstance(adapter, ZoteroImporterAdapter):
+            adapter.log_api_call_summary()
         
     except ZoteroConnectionError as e:
         console.print(f"[red]Zotero connection error: {e.message}[/red]")
-        if e.reason:
-            console.print(f"[yellow]Reason: {e.reason}[/yellow]")
+        if e.details and e.details.get("reason"):
+            console.print(f"[yellow]Reason: {e.details.get('reason')}[/yellow]")
         console.print("[yellow]Please verify Zotero configuration and connectivity[/yellow]")
+        # T052a: Log API call summary even on error
+        if isinstance(adapter, ZoteroImporterAdapter):
+            adapter.log_api_call_summary()
         raise typer.Exit(code=1)
     except ZoteroAPIError as e:
         console.print(f"[red]Zotero API error: {e.message}[/red]")
         if e.details:
             console.print(f"[yellow]Details: {e.details}[/yellow]")
+        # T052a: Log API call summary even on error
+        if isinstance(adapter, ZoteroImporterAdapter):
+            adapter.log_api_call_summary()
         raise typer.Exit(code=1)
     except Exception as e:
         console.print(f"[red]Failed to browse collection: {e}[/red]")
+        # T052a: Log API call summary even on error
+        if isinstance(adapter, ZoteroImporterAdapter):
+            adapter.log_api_call_summary()
         raise typer.Exit(code=1)
 
 
@@ -428,8 +534,8 @@ def recent_items(
         
     except ZoteroConnectionError as e:
         console.print(f"[red]Zotero connection error: {e.message}[/red]")
-        if e.reason:
-            console.print(f"[yellow]Reason: {e.reason}[/yellow]")
+        if e.details and e.details.get("reason"):
+            console.print(f"[yellow]Reason: {e.details.get('reason')}[/yellow]")
         console.print("[yellow]Please verify Zotero configuration and connectivity[/yellow]")
         raise typer.Exit(code=1)
     except ZoteroAPIError as e:
@@ -494,8 +600,8 @@ def list_tags() -> None:
         
     except ZoteroConnectionError as e:
         console.print(f"[red]Zotero connection error: {e.message}[/red]")
-        if e.reason:
-            console.print(f"[yellow]Reason: {e.reason}[/yellow]")
+        if e.details and e.details.get("reason"):
+            console.print(f"[yellow]Reason: {e.details.get('reason')}[/yellow]")
         console.print("[yellow]Please verify Zotero configuration and connectivity[/yellow]")
         raise typer.Exit(code=1)
     except ZoteroAPIError as e:

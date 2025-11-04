@@ -51,10 +51,31 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
         if db_path is None:
             profile_dir = self._detect_zotero_profile()
             if profile_dir is None:
+                # Provide detailed guidance for Windows users
+                system = platform.system()
+                if system == "Windows":
+                    hint = (
+                        "Zotero profile directory not found. Please check:\n"
+                        "1. Zotero is installed and has been run at least once\n"
+                        "2. Profile location is one of:\n"
+                        "   - %APPDATA%\\Zotero\\Profiles\\{profile_id}\\zotero.sqlite\n"
+                        "   - %LOCALAPPDATA%\\Zotero\\Profiles\\{profile_id}\\zotero.sqlite\n"
+                        "   - %USERPROFILE%\\Documents\\Zotero\\Profiles\\{profile_id}\\zotero.sqlite\n"
+                        "3. To manually configure, set 'db_path' in citeloom.toml:\n"
+                        "   [zotero]\n"
+                        "   db_path = \"C:\\Users\\YourName\\AppData\\Roaming\\Zotero\\Profiles\\xxxxx.default\\zotero.sqlite\"\n"
+                        "   storage_dir = \"C:\\Users\\YourName\\AppData\\Roaming\\Zotero\\Profiles\\xxxxx.default\\zotero\\storage\"\n"
+                        "See docs/zotero-local-access.md for more details."
+                    )
+                else:
+                    hint = (
+                        "Zotero profile directory not found. Ensure Zotero is installed and has been run at least once. "
+                        "Or provide db_path explicitly via configuration. "
+                        "See docs/zotero-local-access.md for more details."
+                    )
                 raise ZoteroProfileNotFoundError(
                     "Zotero profile directory",
-                    hint="Ensure Zotero is installed and has been run at least once. "
-                    "Or provide db_path explicitly via configuration.",
+                    hint=hint,
                 )
             db_path = profile_dir / "zotero.sqlite"
             # Storage directory is typically alongside the profile
@@ -74,10 +95,18 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
         
         # Validate database exists
         if not self._db_path.exists():
+            hint = (
+                f"Database file not found at: {self._db_path}\n"
+                "Ensure:\n"
+                "1. Zotero is installed and has been run at least once\n"
+                "2. The database path is correct\n"
+                "3. Zotero is not currently performing intensive operations\n"
+                "To manually configure, set 'db_path' in citeloom.toml. "
+                "See docs/zotero-local-access.md for configuration examples."
+            )
             raise ZoteroDatabaseNotFoundError(
                 str(self._db_path),
-                hint="Ensure Zotero is installed and has been run at least once. "
-                "Database file should be at: zotero.sqlite in profile directory.",
+                hint=hint,
             )
         
         # Open database in immutable read-only mode
@@ -92,18 +121,38 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
             Path to profile directory, or None if not found
         
         Platform paths:
-        - Windows: %APPDATA%\\Zotero\\Profiles\\{profile_id}\\
+        - Windows: Checks multiple common paths:
+            1. %APPDATA%\\Zotero\\Profiles\\{profile_id}\\
+            2. %LOCALAPPDATA%\\Zotero\\Profiles\\{profile_id}\\
+            3. %USERPROFILE%\\Documents\\Zotero\\Profiles\\{profile_id}\\
         - macOS: ~/Library/Application Support/Zotero/Profiles/{profile_id}/
         - Linux: ~/.zotero/zotero/Profiles/{profile_id}/
         """
         system = platform.system()
         
         if system == "Windows":
-            appdata = os.environ.get("APPDATA", "")
-            if not appdata:
-                return None
-            base = Path(appdata) / "Zotero"
-            profiles_ini = base / "Profiles" / "profiles.ini"
+            # Check multiple Windows paths in order of preference
+            windows_paths = [
+                ("APPDATA", os.environ.get("APPDATA", "")),
+                ("LOCALAPPDATA", os.environ.get("LOCALAPPDATA", "")),
+                ("USERPROFILE", os.path.join(os.environ.get("USERPROFILE", ""), "Documents")),
+            ]
+            
+            for env_name, base_path in windows_paths:
+                if not base_path:
+                    continue
+                
+                base = Path(base_path) / "Zotero"
+                profiles_ini = base / "Profiles" / "profiles.ini"
+                
+                if profiles_ini.exists():
+                    # Parse profiles.ini to find default profile
+                    profile_path = LocalZoteroDbAdapter._parse_profiles_ini(profiles_ini, base)
+                    if profile_path is not None:
+                        return profile_path
+            
+            # If no profile found in any Windows path, return None
+            return None
         elif system == "Darwin":  # macOS
             base = Path.home() / "Library" / "Application Support" / "Zotero"
             profiles_ini = base / "Profiles" / "profiles.ini"
@@ -216,6 +265,90 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
                 hint=f"Unexpected error opening database: {e}",
             ) from e
     
+    def _check_schema_has_data_column(self) -> bool:
+        """
+        Check if items table has a 'data' column (Zotero 5+ schema).
+        
+        Returns:
+            True if items.data column exists, False otherwise
+        """
+        if self._conn is None:
+            return False
+        
+        try:
+            cursor = self._conn.execute("PRAGMA table_info(items)")
+            columns = [row[1] for row in cursor.fetchall()]
+            return "data" in columns
+        except sqlite3.Error:
+            return False
+    
+    def _check_schema_needs_migration(self) -> tuple[bool, str]:
+        """
+        Check if database needs migration from old schema to new schema.
+        
+        Returns:
+            Tuple of (needs_migration, message)
+            - needs_migration: True if database appears to need migration
+            - message: Description of the migration status
+        """
+        if self._conn is None:
+            return (False, "Database not connected")
+        
+        try:
+            # Check for Zotero version in settings
+            cursor = self._conn.execute("SELECT value FROM settings WHERE key = 'lastVersion'")
+            row = cursor.fetchone()
+            zotero_version = row["value"] if row else None
+            
+            # Check if items.data column exists
+            has_data_column = self._check_schema_has_data_column()
+            
+            # Check if itemData table exists (old schema)
+            cursor = self._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='itemData'"
+            )
+            has_item_data_table = cursor.fetchone() is not None
+            
+            # If Zotero 7+ is installed but database hasn't migrated
+            if zotero_version and zotero_version.startswith("7.") and not has_data_column and has_item_data_table:
+                return (
+                    True,
+                    f"Zotero {zotero_version} is installed, but database hasn't been migrated to new schema. "
+                    "Please open Zotero desktop application once to trigger database migration. "
+                    "The migration happens automatically when Zotero starts. "
+                    "Note: Old schema support is enabled as fallback."
+                )
+            
+            if not has_data_column and has_item_data_table:
+                return (
+                    True,
+                    "Database uses old schema (itemData table). "
+                    "Please upgrade Zotero to version 5.0+ and open it to trigger database migration. "
+                    "Note: Old schema support is enabled as fallback."
+                )
+            
+            return (False, "Schema is up to date")
+        except sqlite3.Error:
+            return (False, "Could not check migration status")
+    
+    def _check_has_item_data_table(self) -> bool:
+        """
+        Check if itemData table exists (old schema).
+        
+        Returns:
+            True if itemData table exists, False otherwise
+        """
+        if self._conn is None:
+            return False
+        
+        try:
+            cursor = self._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='itemData'"
+            )
+            return cursor.fetchone() is not None
+        except sqlite3.Error:
+            return False
+    
     def list_collections(self) -> list[dict[str, Any]]:
         """
         List all collections in Zotero library with hierarchy and item counts.
@@ -279,6 +412,44 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
         except ValueError:
             raise ValueError(f"Invalid collection key: {collection_key}")
         
+        # Check if schema has items.data column (Zotero 5+)
+        has_data_column = self._check_schema_has_data_column()
+        
+        if not has_data_column:
+            # Older Zotero schema - items.data column doesn't exist
+            # Use old schema fallback (itemData table) if available
+            if self._check_has_item_data_table():
+                # Check if migration is needed
+                needs_migration, migration_msg = self._check_schema_needs_migration()
+                if needs_migration:
+                    logger.info(
+                        f"Using old schema fallback: {migration_msg.split('.')[0]}. "
+                        "Reading items from itemData table."
+                    )
+                else:
+                    logger.info(
+                        "Using old schema fallback: Reading items from itemData table. "
+                        "Consider upgrading Zotero for better performance."
+                    )
+                # Fall through to old schema implementation
+                yield from self._get_collection_items_old_schema(collection_id, include_subcollections)
+                return
+            else:
+                # No old schema either - cannot proceed
+                needs_migration, migration_msg = self._check_schema_needs_migration()
+                if needs_migration:
+                    logger.warning(
+                        f"Database migration needed: {migration_msg}",
+                        extra={"migration_needed": True, "migration_message": migration_msg},
+                    )
+                else:
+                    logger.warning(
+                        "Zotero database schema appears to be from an older version (< 5.0). "
+                        "The items.data column is not available. "
+                        "Please upgrade Zotero or use web API access instead."
+                    )
+                return
+        
         if include_subcollections:
             # Use recursive CTE to get all subcollections
             query = """
@@ -290,26 +461,26 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
                     JOIN subcollections sc ON c.parentCollectionID = sc.collectionID
                 )
                 SELECT DISTINCT
-                    i.itemID,
-                    i.key,
-                    i.data
-                FROM items i
-                JOIN collectionItems ci ON i.itemID = ci.itemID
+                    items.itemID,
+                    items.key,
+                    items.data
+                FROM items
+                JOIN collectionItems ci ON items.itemID = ci.itemID
                 JOIN subcollections sc ON ci.collectionID = sc.collectionID
-                WHERE json_extract(i.data, '$.itemType') != 'attachment'
-                  AND json_extract(i.data, '$.itemType') != 'annotation';
+                WHERE json_extract(items.data, '$.itemType') != 'attachment'
+                  AND json_extract(items.data, '$.itemType') != 'annotation';
             """
         else:
             query = """
                 SELECT DISTINCT
-                    i.itemID,
-                    i.key,
-                    i.data
-                FROM items i
-                JOIN collectionItems ci ON i.itemID = ci.itemID
+                    items.itemID,
+                    items.key,
+                    items.data
+                FROM items
+                JOIN collectionItems ci ON items.itemID = ci.itemID
                 WHERE ci.collectionID = ?
-                  AND json_extract(i.data, '$.itemType') != 'attachment'
-                  AND json_extract(i.data, '$.itemType') != 'annotation';
+                  AND json_extract(items.data, '$.itemType') != 'attachment'
+                  AND json_extract(items.data, '$.itemType') != 'annotation';
             """
         
         try:
@@ -334,6 +505,155 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
             logger.error(f"Failed to get collection items: {e}")
             raise
     
+    def _get_collection_items_old_schema(
+        self,
+        collection_id: int,
+        include_subcollections: bool = False,
+    ) -> Iterator[dict[str, Any]]:
+        """
+        Get items from collection using old schema (itemData table).
+        
+        Based on zotero-mcp implementation: https://github.com/54yyyu/zotero-mcp/blob/main/src/zotero_mcp/local_db.py
+        
+        Args:
+            collection_id: Collection ID
+            include_subcollections: If True, recursively include items from subcollections
+        
+        Yields:
+            Zotero items with keys: 'key', 'data' (formatted to match Web API format)
+        """
+        if self._conn is None:
+            raise ZoteroDatabaseNotFoundError("Database not connected")
+        
+        # Query using old schema (itemData table)
+        # Based on zotero-mcp implementation: https://github.com/54yyyu/zotero-mcp/blob/main/src/zotero_mcp/local_db.py
+        if include_subcollections:
+            # Use recursive CTE to get all subcollections
+            query = """
+                WITH RECURSIVE subcollections(collectionID) AS (
+                    SELECT ? AS collectionID
+                    UNION ALL
+                    SELECT c.collectionID 
+                    FROM collections c
+                    JOIN subcollections sc ON c.parentCollectionID = sc.collectionID
+                )
+                SELECT DISTINCT
+                    i.itemID,
+                    i.key,
+                    i.itemTypeID,
+                    it.typeName as item_type,
+                    title_val.value as title,
+                    date_val.value as date,
+                    doi_val.value as doi
+                FROM items i
+                JOIN collectionItems ci ON i.itemID = ci.itemID
+                JOIN subcollections sc ON ci.collectionID = sc.collectionID
+                JOIN itemTypes it ON i.itemTypeID = it.itemTypeID
+                -- Get title (fieldID = 1)
+                LEFT JOIN itemData title_data ON i.itemID = title_data.itemID AND title_data.fieldID = 1
+                LEFT JOIN itemDataValues title_val ON title_data.valueID = title_val.valueID
+                -- Get date (fieldID = 14)
+                LEFT JOIN itemData date_data ON i.itemID = date_data.itemID AND date_data.fieldID = 14
+                LEFT JOIN itemDataValues date_val ON date_data.valueID = date_val.valueID
+                -- Get DOI
+                LEFT JOIN fields doi_f ON doi_f.fieldName = 'DOI'
+                LEFT JOIN itemData doi_data ON i.itemID = doi_data.itemID AND doi_data.fieldID = doi_f.fieldID
+                LEFT JOIN itemDataValues doi_val ON doi_data.valueID = doi_val.valueID
+                WHERE it.typeName NOT IN ('attachment', 'note', 'annotation')
+            """
+        else:
+            query = """
+                SELECT DISTINCT
+                    i.itemID,
+                    i.key,
+                    i.itemTypeID,
+                    it.typeName as item_type,
+                    title_val.value as title,
+                    date_val.value as date,
+                    doi_val.value as doi
+                FROM items i
+                JOIN collectionItems ci ON i.itemID = ci.itemID
+                JOIN itemTypes it ON i.itemTypeID = it.itemTypeID
+                -- Get title (fieldID = 1)
+                LEFT JOIN itemData title_data ON i.itemID = title_data.itemID AND title_data.fieldID = 1
+                LEFT JOIN itemDataValues title_val ON title_data.valueID = title_val.valueID
+                -- Get date (fieldID = 14)
+                LEFT JOIN itemData date_data ON i.itemID = date_data.itemID AND date_data.fieldID = 14
+                LEFT JOIN itemDataValues date_val ON date_data.valueID = date_val.valueID
+                -- Get DOI
+                LEFT JOIN fields doi_f ON doi_f.fieldName = 'DOI'
+                LEFT JOIN itemData doi_data ON i.itemID = doi_data.itemID AND doi_data.fieldID = doi_f.fieldID
+                LEFT JOIN itemDataValues doi_val ON doi_data.valueID = doi_val.valueID
+                WHERE ci.collectionID = ?
+                  AND it.typeName NOT IN ('attachment', 'note', 'annotation')
+            """
+        
+        try:
+            cursor = self._conn.execute(query, (collection_id,))
+            for row in cursor:
+                # Build item data dict matching Web API format
+                item_data: dict[str, Any] = {
+                    "key": row["key"],
+                    "itemType": row["item_type"] or "unknown",
+                    "title": row["title"] or "",
+                    "date": row["date"] or "",
+                }
+                
+                # Add DOI if available
+                if row["doi"]:
+                    item_data["DOI"] = row["doi"]
+                    item_data["doi"] = row["doi"]
+                
+                # Get creators (authors)
+                # Try to get creators - handle both name and firstName/lastName formats
+                creators_query = """
+                    SELECT 
+                        c.firstName,
+                        c.lastName
+                    FROM itemCreators ic
+                    JOIN creators c ON ic.creatorID = c.creatorID
+                    WHERE ic.itemID = ?
+                    ORDER BY ic.orderIndex
+                """
+                try:
+                    creators_cursor = self._conn.execute(creators_query, (row["itemID"],))
+                    creators = []
+                    for creator_row in creators_cursor:
+                        first = creator_row["firstName"] or ""
+                        last = creator_row["lastName"] or ""
+                        if first or last:
+                            creators.append({
+                                "firstName": first,
+                                "lastName": last,
+                            })
+                    if creators:
+                        item_data["creators"] = creators
+                except sqlite3.Error as e:
+                    # If creators query fails, skip creators (non-critical)
+                    logger.debug(f"Could not retrieve creators for item {row['key']}: {e}")
+                
+                # Get tags
+                tags_query = """
+                    SELECT t.name as tag
+                    FROM itemTags it
+                    JOIN tags t ON it.tagID = t.tagID
+                    WHERE it.itemID = ?
+                """
+                tags_cursor = self._conn.execute(tags_query, (row["itemID"],))
+                tags = []
+                for tag_row in tags_cursor:
+                    tags.append({"tag": tag_row["tag"]})
+                if tags:
+                    item_data["tags"] = tags
+                
+                yield {
+                    "key": row["key"],
+                    "data": item_data,
+                }
+        except sqlite3.Error as e:
+            logger.error(f"Failed to get collection items from old schema: {e}")
+            raise
+    
     def get_item_attachments(self, item_key: str) -> list[dict[str, Any]]:
         """
         Get PDF attachments for a Zotero item.
@@ -352,40 +672,75 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
         if self._conn is None:
             raise ZoteroDatabaseNotFoundError("Database not connected")
         
-        query = """
-            SELECT 
-                ia.itemID,
-                ia.key as attachment_key,
-                ia.data,
-                (SELECT key FROM items WHERE itemID = ia.parentItemID) as parent_item_key
-            FROM itemAttachments ia
-            JOIN items i ON ia.parentItemID = i.itemID
-            WHERE i.key = ?
-            AND json_extract(ia.data, '$.contentType') = 'application/pdf';
-        """
+        # Check if schema has items.data column (Zotero 5+)
+        has_data_column = self._check_schema_has_data_column()
+        
+        if has_data_column:
+            # New schema - use items.data column
+            query = """
+                SELECT 
+                    ia.itemID,
+                    att.key as attachment_key,
+                    att.data,
+                    (SELECT key FROM items WHERE itemID = ia.parentItemID) as parent_item_key
+                FROM itemAttachments ia
+                JOIN items i ON ia.parentItemID = i.itemID
+                JOIN items att ON ia.itemID = att.itemID
+                WHERE i.key = ?
+                AND json_extract(att.data, '$.contentType') = 'application/pdf';
+            """
+        else:
+            # Old schema - use itemAttachments table directly
+            query = """
+                SELECT 
+                    ia.itemID,
+                    att.key as attachment_key,
+                    (SELECT key FROM items WHERE itemID = ia.parentItemID) as parent_item_key,
+                    ia.contentType,
+                    ia.path
+                FROM itemAttachments ia
+                JOIN items i ON ia.parentItemID = i.itemID
+                JOIN items att ON ia.itemID = att.itemID
+                WHERE i.key = ?
+                AND (ia.contentType = 'application/pdf' OR ia.contentType LIKE '%pdf%');
+            """
         
         try:
             cursor = self._conn.execute(query, (item_key,))
             attachments = []
             for row in cursor:
-                # Parse JSON data field
-                data_str = row["data"]
-                if isinstance(data_str, str):
-                    try:
-                        attachment_data = json.loads(data_str)
-                    except json.JSONDecodeError:
-                        logger.warning(f"Failed to parse JSON for attachment {row['attachment_key']}")
-                        attachment_data = {}
+                if has_data_column:
+                    # New schema - parse JSON data field
+                    data_str = row.get("data")
+                    if isinstance(data_str, str):
+                        try:
+                            attachment_data = json.loads(data_str)
+                        except json.JSONDecodeError:
+                            logger.warning(f"Failed to parse JSON for attachment {row.get('attachment_key')}")
+                            attachment_data = {}
+                    else:
+                        attachment_data = data_str if isinstance(data_str, dict) else {}
+                    
+                    attachments.append({
+                        "key": row["attachment_key"],
+                        "filename": attachment_data.get("filename", ""),
+                        "contentType": attachment_data.get("contentType", "application/pdf"),
+                        "linkMode": attachment_data.get("linkMode", 0),
+                        "data": attachment_data,
+                    })
                 else:
-                    attachment_data = data_str if isinstance(data_str, dict) else {}
-                
-                attachments.append({
-                    "key": row["attachment_key"],
-                    "filename": attachment_data.get("filename", ""),
-                    "contentType": attachment_data.get("contentType", "application/pdf"),
-                    "linkMode": attachment_data.get("linkMode", 0),
-                    "data": attachment_data,
-                })
+                    # Old schema - use direct columns
+                    attachments.append({
+                        "key": row["attachment_key"],
+                        "filename": Path(row.get("path", "")).name if row.get("path") else "",
+                        "contentType": row.get("contentType", "application/pdf"),
+                        "linkMode": 0,  # Default to imported
+                        "data": {
+                            "filename": Path(row.get("path", "")).name if row.get("path") else "",
+                            "contentType": row.get("contentType", "application/pdf"),
+                            "linkMode": 0,
+                        },
+                    })
             return attachments
         except sqlite3.Error as e:
             logger.error(f"Failed to get item attachments: {e}")
@@ -514,10 +869,44 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
                         alt_path = self._storage_dir / parent_item_key / filename
                         if alt_path.exists():
                             return alt_path
+                    
+                    # Suggest filename variations
+                    suggestions = []
+                    if filename:
+                        # Try common variations
+                        base_name = Path(filename).stem
+                        ext = Path(filename).suffix
+                        variations = [
+                            f"{base_name}{ext}",
+                            f"{base_name.lower()}{ext}",
+                            f"{base_name.upper()}{ext}",
+                            filename.replace(" ", "_"),
+                            filename.replace("_", " "),
+                        ]
+                        
+                        # Check if any variations exist
+                        for variation in variations:
+                            var_path = self._storage_dir / attachment_key / variation
+                            if var_path.exists():
+                                suggestions.append(f"  - Found: {var_path}")
+                            # Also check parent_item_key location
+                            if parent_item_key:
+                                var_path = self._storage_dir / parent_item_key / variation
+                                if var_path.exists():
+                                    suggestions.append(f"  - Found: {var_path}")
+                    
+                    hint_msg = f"File not found at: {file_path}"
+                    if suggestions:
+                        hint_msg += f"\nSimilar filenames found:\n" + "\n".join(suggestions)
+                    hint_msg += f"\nChecked locations:\n  - {file_path}"
+                    if parent_item_key:
+                        hint_msg += f"\n  - {self._storage_dir / parent_item_key / filename}"
+                    hint_msg += f"\nIf file exists with different name, check Zotero storage directory manually."
+                    
                     raise ZoteroPathResolutionError(
                         attachment_key,
                         link_mode=0,
-                        hint=f"File not found at: {file_path}",
+                        hint=hint_msg,
                     )
                 return file_path
             elif link_mode == 1:  # Linked file
@@ -526,10 +915,39 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
                     linked_path = Path(db_path)
                     if linked_path.exists():
                         return linked_path
+                    # Suggest filename variations for linked files
+                    hint_msg = f"Linked file not found at: {db_path}"
+                    if db_path:
+                        db_path_obj = Path(db_path)
+                        if db_path_obj.parent.exists():
+                            # Check if similar filenames exist in the same directory
+                            parent_dir = db_path_obj.parent
+                            filename = db_path_obj.name
+                            if filename:
+                                base_name = db_path_obj.stem
+                                ext = db_path_obj.suffix
+                                variations = [
+                                    f"{base_name}{ext}",
+                                    f"{base_name.lower()}{ext}",
+                                    f"{base_name.upper()}{ext}",
+                                    filename.replace(" ", "_"),
+                                    filename.replace("_", " "),
+                                ]
+                                
+                                suggestions = []
+                                for variation in variations:
+                                    var_path = parent_dir / variation
+                                    if var_path.exists():
+                                        suggestions.append(f"  - Found: {var_path}")
+                                
+                                if suggestions:
+                                    hint_msg += f"\nSimilar filenames found:\n" + "\n".join(suggestions)
+                                hint_msg += f"\nVerify the file path in Zotero or check if the file was moved."
+                    
                     raise ZoteroPathResolutionError(
                         attachment_key,
                         link_mode=1,
-                        hint=f"Linked file not found at: {db_path}",
+                        hint=hint_msg,
                     )
                 else:
                     raise ZoteroPathResolutionError(
@@ -562,6 +980,28 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
         if self._conn is None:
             raise ZoteroDatabaseNotFoundError("Database not connected")
         
+        # Check if schema has items.data column
+        has_data_column = self._check_schema_has_data_column()
+        if not has_data_column:
+            # Use old schema fallback if available
+            if self._check_has_item_data_table():
+                return self._get_item_metadata_old_schema(item_key)
+            else:
+                # No old schema either - cannot proceed
+                needs_migration, migration_msg = self._check_schema_needs_migration()
+                if needs_migration:
+                    logger.warning(
+                        f"Cannot retrieve item metadata: {migration_msg}",
+                        extra={"migration_needed": True, "migration_message": migration_msg},
+                    )
+                else:
+                    logger.warning(
+                        "Zotero database schema appears to be from an older version (< 5.0). "
+                        "Cannot retrieve item metadata from local database. "
+                        "Please upgrade Zotero or use web API access instead."
+                    )
+                return {}
+        
         query = """
             SELECT 
                 i.data,
@@ -591,6 +1031,15 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
                 item_data = data_str if isinstance(data_str, dict) else {}
             
             # Extract metadata in format matching Web API
+            # Extract additional metadata fields (same as Web API)
+            publication_title = (
+                item_data.get("publicationTitle") or
+                item_data.get("journalAbbreviation") or
+                item_data.get("publication") or
+                item_data.get("bookTitle") or
+                None
+            )
+            
             metadata = {
                 "title": item_data.get("title", ""),
                 "creators": item_data.get("creators", []),
@@ -599,6 +1048,13 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
                 "DOI": item_data.get("DOI", ""),
                 "tags": [tag.get("tag", "") for tag in item_data.get("tags", [])],
                 "collections": [],  # Would need additional query to get collections
+                "publicationTitle": publication_title,
+                "volume": item_data.get("volume"),
+                "issue": item_data.get("issue"),
+                "pages": item_data.get("pages"),
+                "url": item_data.get("url") or item_data.get("URL"),
+                "language": item_data.get("language"),
+                "itemType": item_data.get("itemType", ""),
             }
             
             return metadata
@@ -671,6 +1127,31 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
         if self._conn is None:
             raise ZoteroDatabaseNotFoundError("Database not connected")
         
+        # Check if schema has items.data column (Zotero 5+)
+        has_data_column = self._check_schema_has_data_column()
+        
+        if not has_data_column:
+            # Older Zotero schema - items.data column doesn't exist
+            # Use old schema fallback if available
+            if self._check_has_item_data_table():
+                # Use old schema to get recent items
+                return self._get_recent_items_old_schema(limit)
+            else:
+                # No old schema either - cannot proceed
+                needs_migration, migration_msg = self._check_schema_needs_migration()
+                if needs_migration:
+                    logger.warning(
+                        f"Cannot retrieve recent items: {migration_msg}",
+                        extra={"migration_needed": True, "migration_message": migration_msg},
+                    )
+                else:
+                    logger.warning(
+                        "Zotero database schema appears to be from an older version (< 5.0). "
+                        "The items.data column is not available. "
+                        "Please upgrade Zotero or use web API access instead."
+                    )
+                return []  # Return empty list for older schema
+        
         query = """
             SELECT 
                 i.itemID,
@@ -706,6 +1187,250 @@ class LocalZoteroDbAdapter(ZoteroImporterPort):
         except sqlite3.Error as e:
             logger.error(f"Failed to get recent items: {e}")
             raise
+    
+    def _get_recent_items_old_schema(self, limit: int = 10) -> list[dict[str, Any]]:
+        """
+        Get recent items using old schema (itemData table).
+        
+        Based on zotero-mcp implementation: https://github.com/54yyyu/zotero-mcp/blob/main/src/zotero_mcp/local_db.py
+        
+        Args:
+            limit: Maximum number of items to return
+        
+        Returns:
+            List of items sorted by dateAdded (descending)
+        """
+        if self._conn is None:
+            raise ZoteroDatabaseNotFoundError("Database not connected")
+        
+        query = """
+            SELECT 
+                i.itemID,
+                i.key,
+                i.itemTypeID,
+                it.typeName as item_type,
+                i.dateAdded,
+                title_val.value as title,
+                date_val.value as date
+            FROM items i
+            JOIN itemTypes it ON i.itemTypeID = it.itemTypeID
+            -- Get title (fieldID = 1)
+            LEFT JOIN itemData title_data ON i.itemID = title_data.itemID AND title_data.fieldID = 1
+            LEFT JOIN itemDataValues title_val ON title_data.valueID = title_val.valueID
+            -- Get date (fieldID = 14)
+            LEFT JOIN itemData date_data ON i.itemID = date_data.itemID AND date_data.fieldID = 14
+            LEFT JOIN itemDataValues date_val ON date_data.valueID = date_val.valueID
+            WHERE it.typeName NOT IN ('attachment', 'note', 'annotation')
+            ORDER BY i.dateAdded DESC
+            LIMIT ?;
+        """
+        
+        try:
+            cursor = self._conn.execute(query, (limit,))
+            items = []
+            for row in cursor:
+                item_data: dict[str, Any] = {
+                    "key": row["key"],
+                    "itemType": row["item_type"] or "unknown",
+                    "title": row["title"] or "",
+                    "date": row["date"] or "",
+                    "dateAdded": row["dateAdded"] or "",
+                }
+                
+                items.append({
+                    "key": row["key"],
+                    "data": item_data,
+                })
+            return items
+        except sqlite3.Error as e:
+            logger.error(f"Failed to get recent items from old schema: {e}")
+            raise
+    
+    def _get_item_metadata_old_schema(self, item_key: str) -> dict[str, Any]:
+        """
+        Get item metadata using old schema (itemData table).
+        
+        Based on zotero-mcp implementation: https://github.com/54yyyu/zotero-mcp/blob/main/src/zotero_mcp/local_db.py
+        
+        Args:
+            item_key: Zotero item key
+        
+        Returns:
+            Item metadata dict with keys: title, creators (authors), date (year), DOI, tags
+        """
+        if self._conn is None:
+            raise ZoteroDatabaseNotFoundError("Database not connected")
+        
+        query = """
+            SELECT 
+                i.itemID,
+                i.key,
+                i.itemTypeID,
+                it.typeName as item_type,
+                title_val.value as title,
+                date_val.value as date,
+                doi_val.value as doi
+            FROM items i
+            JOIN itemTypes it ON i.itemTypeID = it.itemTypeID
+            -- Get title (fieldID = 1)
+            LEFT JOIN itemData title_data ON i.itemID = title_data.itemID AND title_data.fieldID = 1
+            LEFT JOIN itemDataValues title_val ON title_data.valueID = title_val.valueID
+            -- Get date (fieldID = 14)
+            LEFT JOIN itemData date_data ON i.itemID = date_data.itemID AND date_data.fieldID = 14
+            LEFT JOIN itemDataValues date_val ON date_data.valueID = date_val.valueID
+            -- Get DOI
+            LEFT JOIN fields doi_f ON doi_f.fieldName = 'DOI'
+            LEFT JOIN itemData doi_data ON i.itemID = doi_data.itemID AND doi_data.fieldID = doi_f.fieldID
+            LEFT JOIN itemDataValues doi_val ON doi_data.valueID = doi_val.valueID
+            WHERE i.key = ?
+              AND it.typeName NOT IN ('attachment', 'note', 'annotation');
+        """
+        
+        try:
+            cursor = self._conn.execute(query, (item_key,))
+            row = cursor.fetchone()
+            
+            if row is None:
+                return {}
+            
+            metadata: dict[str, Any] = {
+                "title": row["title"] or "",
+                "itemType": row["item_type"] or "unknown",
+                "date": row["date"] or "",
+            }
+            
+            # Add DOI if available
+            if row["doi"]:
+                metadata["DOI"] = row["doi"]
+                metadata["doi"] = row["doi"]
+            
+            # Get creators
+            creators_query = """
+                SELECT 
+                    c.firstName,
+                    c.lastName
+                FROM itemCreators ic
+                JOIN creators c ON ic.creatorID = c.creatorID
+                WHERE ic.itemID = ?
+                ORDER BY ic.orderIndex
+            """
+            creators_cursor = self._conn.execute(creators_query, (row["itemID"],))
+            creators = []
+            for creator_row in creators_cursor:
+                first = creator_row["firstName"] or ""
+                last = creator_row["lastName"] or ""
+                if first or last:
+                    creators.append({
+                        "firstName": first,
+                        "lastName": last,
+                    })
+            if creators:
+                metadata["creators"] = creators
+            
+            # Extract year from date
+            if row["date"]:
+                try:
+                    year_str = str(row["date"]).split("-")[0]
+                    year = int(year_str)
+                    metadata["year"] = year
+                except (ValueError, IndexError):
+                    pass
+            
+            # Get tags
+            tags_query = """
+                SELECT t.name as tag
+                FROM itemTags it
+                JOIN tags t ON it.tagID = t.tagID
+                WHERE it.itemID = ?
+            """
+            tags_cursor = self._conn.execute(tags_query, (row["itemID"],))
+            tags = []
+            for tag_row in tags_cursor:
+                tags.append(tag_row["tag"])
+            if tags:
+                metadata["tags"] = tags
+            
+            return metadata
+        except sqlite3.Error as e:
+            logger.error(f"Failed to get item metadata from old schema: {e}")
+            return {}
+    
+    def get_collection_info(
+        self,
+        collection_name_or_key: str,
+        collection_cache: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Get collection information with optional command-scoped cache.
+        
+        Args:
+            collection_name_or_key: Collection name or key identifier
+            collection_cache: Optional command-scoped cache for collection metadata
+                - Key: collection_key (str)
+                - Value: collection metadata dict
+        
+        Returns:
+            Collection information dict with keys: key, name, metadata
+        """
+        if self._conn is None:
+            raise ZoteroDatabaseNotFoundError("Database not connected")
+        
+        # Check if it's a collection key (numeric string) or name
+        try:
+            collection_id = int(collection_name_or_key)
+            # It's a key - check cache first
+            collection_key = str(collection_id)
+            if collection_cache and collection_key in collection_cache:
+                cached = collection_cache[collection_key]
+                return {
+                    "key": cached.get("key", collection_key),
+                    "name": cached.get("name", ""),
+                    "metadata": cached,
+                }
+            
+            # Fetch from database
+            query = """
+                SELECT 
+                    c.collectionID,
+                    c.collectionName,
+                    c.parentCollectionID,
+                    (SELECT COUNT(*) FROM collectionItems ci WHERE ci.collectionID = c.collectionID) as item_count
+                FROM collections c
+                WHERE c.collectionID = ?
+                LIMIT 1;
+            """
+            cursor = self._conn.execute(query, (collection_id,))
+            row = cursor.fetchone()
+            
+            if row is None:
+                raise ValueError(f"Collection not found: {collection_name_or_key}")
+            
+            coll_data = {
+                "key": str(row["collectionID"]),
+                "name": row["collectionName"],
+                "parentCollection": str(row["parentCollectionID"]) if row["parentCollectionID"] else None,
+                "item_count": row["item_count"],
+            }
+            
+            # Cache if cache provided
+            if collection_cache is not None:
+                collection_cache[collection_key] = coll_data
+            
+            return {
+                "key": coll_data["key"],
+                "name": coll_data["name"],
+                "metadata": coll_data,
+            }
+        except ValueError:
+            # Not a numeric key, treat as name
+            found = self.find_collection_by_name(collection_name_or_key)
+            if found:
+                coll_key = found.get("key", "")
+                if coll_key:
+                    # Use get_collection_info recursively with key (will check cache)
+                    return self.get_collection_info(coll_key, collection_cache=collection_cache)
+            else:
+                raise ValueError(f"Collection not found: {collection_name_or_key}")
     
     def find_collection_by_name(
         self,

@@ -75,6 +75,165 @@ class ZoteroSourceRouter:
         except Exception:
             return False
     
+    def _is_web_key(self, key: str) -> bool:
+        """
+        Check if a key is in web format (alphanumeric 8 characters).
+        
+        Args:
+            key: Collection key to check
+        
+        Returns:
+            True if key appears to be web format
+        """
+        return len(key) == 8 and key.isalnum() and not key.isdigit()
+    
+    def _is_local_key(self, key: str) -> bool:
+        """
+        Check if a key is in local format (numeric).
+        
+        Args:
+            key: Collection key to check
+        
+        Returns:
+            True if key appears to be local format
+        """
+        return key.isdigit()
+    
+    def _convert_web_key_to_local(self, web_key: str) -> str:
+        """
+        Convert web collection key to local collection key.
+        
+        Args:
+            web_key: Web collection key (alphanumeric)
+        
+        Returns:
+            Local collection key (numeric)
+        
+        Raises:
+            ValueError: If collection not found or conversion fails
+        """
+        try:
+            # Get collection info from web adapter
+            web_collection = self.web_adapter.get_collection_info(web_key)
+            collection_name = web_collection.get("name")
+            
+            if not collection_name:
+                raise ValueError(f"Collection {web_key} has no name in web adapter")
+            
+            # Find collection by name in local adapter
+            local_collection = self.local_adapter.find_collection_by_name(collection_name)
+            
+            if not local_collection:
+                raise ValueError(
+                    f"Collection '{collection_name}' not found in local adapter. "
+                    "It may only exist in web sync."
+                )
+            
+            local_key = local_collection.get("key")
+            if not local_key:
+                raise ValueError(f"Collection '{collection_name}' has no key in local adapter")
+            
+            logger.debug(
+                f"Converted web key {web_key} to local key {local_key}",
+                extra={"web_key": web_key, "local_key": local_key, "collection_name": collection_name},
+            )
+            
+            return str(local_key)
+        except Exception as e:
+            raise ValueError(
+                f"Failed to convert web key {web_key} to local key: {e}"
+            ) from e
+    
+    def _convert_local_key_to_web(self, local_key: str) -> str:
+        """
+        Convert local collection key to web collection key.
+        
+        Args:
+            local_key: Local collection key (numeric)
+        
+        Returns:
+            Web collection key (alphanumeric)
+        
+        Raises:
+            ValueError: If collection not found or conversion fails
+        """
+        try:
+            # Get collection info from local adapter
+            local_collection = self.local_adapter.get_collection_info(local_key)
+            collection_name = local_collection.get("name")
+            
+            if not collection_name:
+                raise ValueError(f"Collection {local_key} has no name in local adapter")
+            
+            # Find collection by name in web adapter
+            web_collection = self.web_adapter.find_collection_by_name(collection_name)
+            
+            if not web_collection:
+                raise ValueError(
+                    f"Collection '{collection_name}' not found in web adapter. "
+                    "It may only exist locally."
+                )
+            
+            web_key = web_collection.get("key")
+            if not web_key:
+                raise ValueError(f"Collection '{collection_name}' has no key in web adapter")
+            
+            logger.debug(
+                f"Converted local key {local_key} to web key {web_key}",
+                extra={"local_key": local_key, "web_key": web_key, "collection_name": collection_name},
+            )
+            
+            return str(web_key)
+        except Exception as e:
+            raise ValueError(
+                f"Failed to convert local key {local_key} to web key: {e}"
+            ) from e
+    
+    def _normalize_key_for_adapter(
+        self,
+        collection_key: str,
+        target_adapter: str,
+    ) -> str:
+        """
+        Normalize collection key format for target adapter.
+        
+        Args:
+            collection_key: Collection key (may be web or local format)
+            target_adapter: 'local' or 'web'
+        
+        Returns:
+            Collection key in appropriate format for target adapter
+        
+        Raises:
+            ValueError: If conversion fails
+        """
+        if target_adapter == "local":
+            if self._is_local_key(collection_key):
+                # Already in local format
+                return collection_key
+            elif self._is_web_key(collection_key):
+                # Convert web key to local key
+                if not self.is_local_available():
+                    raise ValueError("Cannot convert web key to local: local adapter not available")
+                return self._convert_web_key_to_local(collection_key)
+            else:
+                # Unknown format, try to use as-is
+                return collection_key
+        
+        elif target_adapter == "web":
+            if self._is_web_key(collection_key):
+                # Already in web format
+                return collection_key
+            elif self._is_local_key(collection_key):
+                # Convert local key to web key
+                return self._convert_local_key_to_web(collection_key)
+            else:
+                # Unknown format, try to use as-is
+                return collection_key
+        
+        else:
+            raise ValueError(f"Unknown target adapter: {target_adapter}")
+    
     def list_collections(self) -> list[dict[str, Any]]:
         """
         Route collection listing based on strategy.
@@ -173,7 +332,9 @@ class ZoteroSourceRouter:
                     "Local adapter not available but strategy is 'local-only'. "
                     "Use 'local-first' or 'auto' for fallback, or configure local adapter."
                 )
-            yield from self.local_adapter.get_collection_items(collection_key, include_subcollections)
+            # Convert key format if needed
+            local_key = self._normalize_key_for_adapter(collection_key, "local")
+            yield from self.local_adapter.get_collection_items(local_key, include_subcollections)
             return
         
         if self.strategy == "web-only":
@@ -183,8 +344,10 @@ class ZoteroSourceRouter:
         if self.strategy == "local-first":
             if self.is_local_available():
                 try:
+                    # Convert key format if needed for local adapter
+                    local_key = self._normalize_key_for_adapter(collection_key, "local")
                     yield from self.local_adapter.get_collection_items(
-                        collection_key, include_subcollections
+                        local_key, include_subcollections
                     )
                     return
                 except Exception as e:
@@ -192,12 +355,16 @@ class ZoteroSourceRouter:
                         f"Local adapter failed, falling back to web: {e}",
                         extra={"error": str(e), "strategy": self.strategy, "collection_key": collection_key},
                     )
-            yield from self.web_adapter.get_collection_items(collection_key, include_subcollections)
+            # Convert key format if needed for web adapter
+            web_key = self._normalize_key_for_adapter(collection_key, "web")
+            yield from self.web_adapter.get_collection_items(web_key, include_subcollections)
             return
         
         if self.strategy == "web-first":
             try:
-                yield from self.web_adapter.get_collection_items(collection_key, include_subcollections)
+                # Convert key format if needed for web adapter
+                web_key = self._normalize_key_for_adapter(collection_key, "web")
+                yield from self.web_adapter.get_collection_items(web_key, include_subcollections)
                 return
             except ZoteroRateLimitError as e:
                 logger.warning(
@@ -205,8 +372,10 @@ class ZoteroSourceRouter:
                     extra={"error": str(e), "strategy": self.strategy, "collection_key": collection_key},
                 )
                 if self.is_local_available():
+                    # Convert key format if needed for local adapter
+                    local_key = self._normalize_key_for_adapter(collection_key, "local")
                     yield from self.local_adapter.get_collection_items(
-                        collection_key, include_subcollections
+                        local_key, include_subcollections
                     )
                     return
                 raise
@@ -216,8 +385,10 @@ class ZoteroSourceRouter:
                     extra={"error": str(e), "strategy": self.strategy, "collection_key": collection_key},
                 )
                 if self.is_local_available():
+                    # Convert key format if needed for local adapter
+                    local_key = self._normalize_key_for_adapter(collection_key, "local")
                     yield from self.local_adapter.get_collection_items(
-                        collection_key, include_subcollections
+                        local_key, include_subcollections
                     )
                     return
                 raise
@@ -225,10 +396,12 @@ class ZoteroSourceRouter:
         # auto strategy
         if self.is_local_available():
             try:
-                items = list(self.local_adapter.get_collection_items(collection_key, include_subcollections))
+                # Convert key format if needed for local adapter
+                local_key = self._normalize_key_for_adapter(collection_key, "local")
+                items = list(self.local_adapter.get_collection_items(local_key, include_subcollections))
                 logger.info(
                     "Using local adapter for collection items (auto strategy)",
-                    extra={"strategy": self.strategy, "collection_key": collection_key, "count": len(items)},
+                    extra={"strategy": self.strategy, "collection_key": collection_key, "local_key": local_key, "count": len(items)},
                 )
                 yield from items
                 return
@@ -238,11 +411,13 @@ class ZoteroSourceRouter:
                     extra={"error": str(e), "strategy": self.strategy, "collection_key": collection_key},
                 )
         
+        # Convert key format if needed for web adapter
+        web_key = self._normalize_key_for_adapter(collection_key, "web")
         logger.info(
             "Using web adapter for collection items (auto strategy)",
-            extra={"strategy": self.strategy, "collection_key": collection_key},
+            extra={"strategy": self.strategy, "collection_key": collection_key, "web_key": web_key},
         )
-        yield from self.web_adapter.get_collection_items(collection_key, include_subcollections)
+        yield from self.web_adapter.get_collection_items(web_key, include_subcollections)
     
     def download_attachment(
         self,
